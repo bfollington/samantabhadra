@@ -60,8 +60,6 @@ export class Chat extends AIChatAgent<Env, State> {
     resources: [],
   };
 
-
-
   mcp = new MCPClientManager("my-agent", "1.0.0", {
     baseCallbackUri: `${this.env.HOST}/agents/my-agent/samantabhadra/callback`,
     storage: this.ctx.storage,
@@ -183,7 +181,7 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
       return new Response(authUrl, { status: 200 });
     }
 
-    return new Response("Not found", { status: 404 });
+    return super.onRequest(request);
   }
 }
 
