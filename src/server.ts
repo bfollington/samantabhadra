@@ -157,6 +157,7 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
     if (this.mcp.isCallbackRequest(request)) {
       try {
         const { serverId } = await this.mcp.handleCallbackRequest(request);
+        console.log('DEBUG', serverId, this.state);
         this.setServerState(serverId, {
           url: this.state.servers[serverId].url,
           state: this.mcp.mcpConnections[serverId].connectionState,

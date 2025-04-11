@@ -119,6 +119,54 @@ const cancelScheduledTask = tool({
 });
 
 /**
+ * Tool to list all MCP servers
+ * This executes automatically without requiring human confirmation
+ */
+const listMcpServers = tool({
+  description: "List all connected MCP servers",
+  parameters: z.object({}),
+  execute: async () => {
+    const agent = agentContext.getStore();
+    if (!agent) {
+      throw new Error("No agent found");
+    }
+    try {
+      return agent.state.servers;
+    } catch (error) {
+      console.error("Error listing MCP servers", error);
+      return `Error listing MCP servers: ${error}`;
+    }
+  },
+});
+
+/**
+ * Tool to add a new MCP server
+ * This executes automatically without requiring human confirmation
+ */
+const addMcpServer = tool({
+  description: "Add a new MCP server connection",
+  parameters: z.object({
+    url: z.string().describe("The URL of the MCP server to add"),
+  }),
+  execute: async ({ url }) => {
+    const agent = agentContext.getStore();
+    if (!agent) {
+      throw new Error("No agent found");
+    }
+    try {
+      const authUrl = await agent.addMcpServer(url);
+      if (authUrl) {
+        return `Server added. Please authenticate at: ${authUrl}`;
+      }
+      return "Server added successfully.";
+    } catch (error) {
+      console.error("Error adding MCP server", error);
+      return `Error adding MCP server: ${error}`;
+    }
+  },
+});
+
+/**
  * Export all available tools
  * These will be provided to the AI model to describe available capabilities
  */
@@ -128,6 +176,8 @@ export const tools = {
   scheduleTask,
   getScheduledTasks,
   cancelScheduledTask,
+  listMcpServers,
+  addMcpServer,
 };
 
 /**
