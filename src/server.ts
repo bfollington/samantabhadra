@@ -60,8 +60,10 @@ export class Chat extends AIChatAgent<Env, State> {
     resources: [],
   };
 
+
+
   mcp = new MCPClientManager("my-agent", "1.0.0", {
-    baseCallbackUri: `${this.env.HOST}/agents/my-agent/${this.name}/callback`,
+    baseCallbackUri: `${this.env.HOST}/agents/my-agent/samantabhadra/callback`,
     storage: this.ctx.storage,
   });
 
