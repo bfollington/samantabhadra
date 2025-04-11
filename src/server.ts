@@ -87,6 +87,7 @@ export class Chat extends AIChatAgent<Env, State> {
   async addMcpServer(url: string): Promise<string> {
     console.log(`Registering server: ${url}`);
     const { id, authUrl } = await this.mcp.connect(url);
+    console.log(`Connected to MCP server with ID: ${id}`);
     this.setServerState(id, {
       url,
       authUrl,
