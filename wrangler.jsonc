@@ -9,6 +9,9 @@
   "assets": {
     "directory": "public",
   },
+  "vars": {
+    "HOST": "https://samantabhadra.bfollington.workers.dev/"
+  },
   "durable_objects": {
     "bindings": [
       {
