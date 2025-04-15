@@ -21,7 +21,7 @@ import type {
 } from "@modelcontextprotocol/sdk/types.js";
 // import { env } from "cloudflare:workers";
 
-const model = openai("gpt-4o-2024-11-20");
+const model = openai("gpt-4.1-2025-04-14");
 // Cloudflare AI Gateway
 // const openai = createOpenAI({
 //   apiKey: env.OPENAI_API_KEY,
@@ -121,9 +121,9 @@ export class Chat extends AIChatAgent<Env, State> {
             model,
             system: `You are a helpful assistant that can do various tasks...
 
-${unstable_getSchedulePrompt({ date: new Date() })}
-
-If the user asks to schedule a task, use the schedule tool to schedule the task.
+You can also manage memos for the user. Memos are notes with a unique slug, content, headers (as JSON), and links (as JSON).
+When creating or editing memos, any text in the format [[slug]] will be automatically detected as a backlink to another memo.
+You can create, edit, search, delete, and list memos using the memo tools. You can also find all memos that link to a specific memo using the findBacklinks tool.
 `,
             messages: processedMessages,
             tools,
@@ -154,7 +154,125 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
     ]);
   }
 
+  /**
+   * Initializes the memos table if it doesn't already exist
+   */
+  async initMemosTable() {
+    try {
+      // Create the memos table if it doesn't exist
+      await this.sql`
+        CREATE TABLE IF NOT EXISTS memos (
+          id TEXT PRIMARY KEY,
+          slug TEXT UNIQUE NOT NULL,
+          content TEXT NOT NULL,
+          headers TEXT NOT NULL,
+          links TEXT NOT NULL,
+          created TEXT NOT NULL,
+          modified TEXT NOT NULL
+        )
+      `;
+
+      // Create an index on the slug for faster lookups
+      await this.sql`
+        CREATE INDEX IF NOT EXISTS idx_memos_slug ON memos(slug)
+      `;
+
+      return true;
+    } catch (error) {
+      console.error("Error initializing memos table:", error);
+      return false;
+    }
+  }
+
+  /**
+   * Handles API requests for memos
+   */
+  async handleMemosApi(request: Request): Promise<Response | null> {
+    const url = new URL(request.url);
+    const pathParts = url.pathname.split('/');
+    console.log('routing', pathParts)
+
+    // Check if this is a request to the memos API
+    if (url.pathname.includes('list-memos')) {
+      // Ensure the memos table exists
+      await this.initMemosTable();
+
+      // Handle GET request to list all memos
+      try {
+        // Parse query parameters for pagination and sorting
+        const params = new URLSearchParams(url.search);
+        const limit = parseInt(params.get('limit') || '50', 10);
+        const sortBy = params.get('sortBy') || 'modified';
+        const sortOrder = params.get('sortOrder') || 'desc';
+
+        // Use simple conditionals to determine the correct ORDER BY clause
+        let orderByClause;
+        if (sortBy === 'created') {
+          orderByClause = sortOrder === 'asc' ? 'created ASC' : 'created DESC';
+        } else if (sortBy === 'slug') {
+          orderByClause = sortOrder === 'asc' ? 'slug ASC' : 'slug DESC';
+        } else {
+          // Default to 'modified'
+          orderByClause = sortOrder === 'asc' ? 'modified ASC' : 'modified DESC';
+        }
+
+        // Execute the query using template literals for SQL
+        let memos;
+        if (sortBy === 'created') {
+          if (sortOrder === 'asc') {
+            memos = await this.sql`SELECT * FROM memos ORDER BY created ASC LIMIT ${limit}`;
+          } else {
+            memos = await this.sql`SELECT * FROM memos ORDER BY created DESC LIMIT ${limit}`;
+          }
+        } else if (sortBy === 'slug') {
+          if (sortOrder === 'asc') {
+            memos = await this.sql`SELECT * FROM memos ORDER BY slug ASC LIMIT ${limit}`;
+          } else {
+            memos = await this.sql`SELECT * FROM memos ORDER BY slug DESC LIMIT ${limit}`;
+          }
+        } else {
+          // Default to 'modified'
+          if (sortOrder === 'asc') {
+            memos = await this.sql`SELECT * FROM memos ORDER BY modified ASC LIMIT ${limit}`;
+          } else {
+            memos = await this.sql`SELECT * FROM memos ORDER BY modified DESC LIMIT ${limit}`;
+          }
+        }
+
+        return Response.json(memos, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'no-cache'
+          }
+        });
+      } catch (error: unknown) {
+        console.error('Error fetching memos:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        return Response.json(
+          { error: 'Failed to retrieve memos', message: errorMessage },
+          { status: 500 }
+        );
+      }
+
+      // If we reach here, it was a request to the memos API but not one we handle yet
+      return Response.json(
+        { error: 'Not implemented', method: request.method, path: url.pathname },
+        { status: 501 }
+      );
+    }
+
+    // Not a memos API request
+    return null;
+  }
+
   async onRequest(request: Request): Promise<Response> {
+    // First check if this is a memos API request
+    const memosApiResponse = await this.handleMemosApi(request);
+    if (memosApiResponse) {
+      return memosApiResponse;
+    }
+
     if (this.mcp.isCallbackRequest(request)) {
       try {
         const { serverId } = await this.mcp.handleCallbackRequest(request);

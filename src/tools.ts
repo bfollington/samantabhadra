@@ -11,6 +11,9 @@ import {
   unstable_scheduleSchema,
 } from "agents/schedule";
 
+// Import the memo tools
+import { memoTools } from "./memo-tools";
+
 /**
  * Weather information tool that requires human confirmation
  * When invoked, this will present a confirmation dialog to the user
@@ -178,6 +181,8 @@ export const tools = {
   cancelScheduledTask,
   listMcpServers,
   addMcpServer,
+  // Add memo management tools
+  ...memoTools,
 };
 
 /**

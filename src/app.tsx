@@ -9,10 +9,11 @@ import ReactMarkdown from "react-markdown";
 // Component imports
 import { Button } from "@/components/button/Button";
 import { Card } from "@/components/card/Card";
-import { Input } from "@/components/input/Input";
+import { TextArea } from "@/components/input/TextArea";
 import { Avatar } from "@/components/avatar/Avatar";
 import { Toggle } from "@/components/toggle/Toggle";
 import { Tooltip } from "@/components/tooltip/Tooltip";
+import { MemosPanel } from "@/components/memos/MemosPanel";
 
 // Icon imports
 import {
@@ -22,6 +23,7 @@ import {
   Robot,
   Sun,
   Trash,
+  Note,
 } from "@phosphor-icons/react";
 
 // List of tools that require human confirmation
@@ -36,6 +38,7 @@ export default function Chat() {
     return (savedTheme as "dark" | "light") || "dark";
   });
   const [showDebug, setShowDebug] = useState(false);
+  const [showMemos, setShowMemos] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback(() => {
@@ -138,6 +141,15 @@ export default function Chat() {
             />
           </div>
 
+          <div className="flex items-center gap-2 mr-2">
+            <Note size={16} />
+            <Toggle
+              toggled={showMemos}
+              aria-label="Toggle memos panel"
+              onClick={() => setShowMemos((prev) => !prev)}
+            />
+          </div>
+
           <Button
             variant="ghost"
             size="md"
@@ -159,238 +171,240 @@ export default function Chat() {
           </Button>
         </div>
 
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-24 max-h-[calc(100vh-10rem)]">
-          {agentMessages.length === 0 && (
-            <div className="h-full flex items-center justify-center">
-              <Card className="p-6 max-w-md mx-auto bg-neutral-100 dark:bg-neutral-900">
-                <div className="text-center space-y-4">
-                  <div className="bg-[#F48120]/10 text-[#F48120] rounded-full p-3 inline-flex">
-                    <Robot size={24} />
+        {/* Either show Memos Panel or Messages */}
+        {showMemos ? (
+          <MemosPanel onClose={() => setShowMemos(false)} />
+        ) : (
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-24 max-h-[calc(100vh-10rem)]">
+            {agentMessages.length === 0 && (
+              <div className="h-full flex items-center justify-center">
+                <Card className="p-6 max-w-md mx-auto bg-neutral-100 dark:bg-neutral-900">
+                  <div className="text-center space-y-4">
+                    <div className="bg-[#F48120]/10 text-[#F48120] rounded-full p-3 inline-flex">
+                      <Robot size={24} />
+                    </div>
+                    <h3 className="font-semibold text-lg">Yo</h3>
+                    <p className="text-muted-foreground text-sm">
+                      Welcome to your notebook.
+                    </p>
+                    <p className="text-muted-foreground text-sm">
+                      Start a thread, list existing memos and create new ones.
+                    </p>
                   </div>
-                  <h3 className="font-semibold text-lg">Welcome to AI Chat</h3>
-                  <p className="text-muted-foreground text-sm">
-                    Start a conversation with your AI assistant. Try asking
-                    about:
-                  </p>
-                  <ul className="text-sm text-left space-y-2">
-                    <li className="flex items-center gap-2">
-                      <span className="text-[#F48120]">•</span>
-                      <span>Weather information for any city</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <span className="text-[#F48120]">•</span>
-                      <span>Local time in different locations</span>
-                    </li>
-                  </ul>
-                </div>
-              </Card>
-            </div>
-          )}
+                </Card>
+              </div>
+            )}
 
-          {agentMessages.map((m: Message, index) => {
-            const isUser = m.role === "user";
-            const showAvatar =
-              index === 0 || agentMessages[index - 1]?.role !== m.role;
-            const showRole = showAvatar && !isUser;
+            {agentMessages.map((m: Message, index) => {
+              const isUser = m.role === "user";
+              const showAvatar =
+                index === 0 || agentMessages[index - 1]?.role !== m.role;
+              const showRole = showAvatar && !isUser;
 
-            return (
-              <div key={m.id}>
-                {showDebug && (
-                  <pre className="text-xs text-muted-foreground overflow-scroll">
-                    {JSON.stringify(m, null, 2)}
-                  </pre>
-                )}
-                <div
-                  className={`flex ${isUser ? "justify-end" : "justify-start"}`}
-                >
+              return (
+                <div key={m.id}>
+                  {showDebug && (
+                    <pre className="text-xs text-muted-foreground overflow-scroll">
+                      {JSON.stringify(m, null, 2)}
+                    </pre>
+                  )}
                   <div
-                    className={`flex gap-2 max-w-[85%] ${isUser ? "flex-row-reverse" : "flex-row"
-                      }`}
+                    className={`flex ${isUser ? "justify-end" : "justify-start"}`}
                   >
-                    {showAvatar && !isUser ? (
-                      <Avatar username={"AI"} />
-                    ) : (
-                      !isUser && <div className="w-8" />
-                    )}
+                    <div
+                      className={`flex gap-2 max-w-[85%] ${isUser ? "flex-row-reverse" : "flex-row"
+                        }`}
+                    >
+                      {showAvatar && !isUser ? (
+                        <Avatar username={"AI"} />
+                      ) : (
+                        !isUser && <div className="w-8" />
+                      )}
 
-                    <div>
                       <div>
-                        {m.parts?.map((part, i) => {
-                          if (part.type === "text") {
-                            return (
-                              // biome-ignore lint/suspicious/noArrayIndexKey: it's fine here
-                              <div key={i}>
-                                <Card
-                                  className={`p-3 rounded-md bg-neutral-100 dark:bg-neutral-900 ${isUser
+                        <div>
+                          {m.parts?.map((part, i) => {
+                            if (part.type === "text") {
+                              return (
+                                // biome-ignore lint/suspicious/noArrayIndexKey: it's fine here
+                                <div key={i}>
+                                  <Card
+                                    className={`p-3 rounded-md bg-neutral-100 dark:bg-neutral-900 ${isUser
                                       ? "rounded-br-none"
                                       : "rounded-bl-none border-assistant-border"
-                                    } ${part.text.startsWith("scheduled message")
-                                      ? "border-accent/50"
-                                      : ""
-                                    } relative`}
-                                >
-                                  {part.text.startsWith(
-                                    "scheduled message"
-                                  ) && (
-                                      <span className="absolute -top-3 -left-2 text-base">
-                                        🕒
-                                      </span>
+                                      } ${part.text.startsWith("scheduled message")
+                                        ? "border-accent/50"
+                                        : ""
+                                      } relative`}
+                                  >
+                                    {part.text.startsWith(
+                                      "scheduled message"
+                                    ) && (
+                                        <span className="absolute -top-3 -left-2 text-base">
+                                          🕒
+                                        </span>
+                                      )}
+                                    <span className="text-sm whitespace-pre-wrap">
+                                      <ReactMarkdown>
+                                        {part.text.replace(
+                                          /^scheduled message: /,
+                                          ""
+                                        )}
+                                      </ReactMarkdown>
+                                    </span>
+                                  </Card>
+                                  <p
+                                    className={`text-xs text-muted-foreground mt-1 ${isUser ? "text-right" : "text-left"
+                                      }`}
+                                  >
+                                    {formatTime(
+                                      new Date(m.createdAt as unknown as string)
                                     )}
-                                  <span className="text-sm whitespace-pre-wrap">
-                                    <ReactMarkdown >
-                                      {part.text.replace(
-                                        /^scheduled message: /,
-                                        ""
-                                      )}
-                                    </ReactMarkdown>
-                                  </span>
-                                </Card>
-                                <p
-                                  className={`text-xs text-muted-foreground mt-1 ${isUser ? "text-right" : "text-left"
-                                    }`}
-                                >
-                                  {formatTime(
-                                    new Date(m.createdAt as unknown as string)
-                                  )}
-                                </p>
-                              </div>
-                            );
-                          }
+                                  </p>
+                                </div>
+                              );
+                            }
 
-                          if (part.type === "tool-invocation") {
-                            const toolInvocation = part.toolInvocation;
-                            const toolCallId = toolInvocation.toolCallId;
+                            if (part.type === "tool-invocation") {
+                              const toolInvocation = part.toolInvocation;
+                              const toolCallId = toolInvocation.toolCallId;
 
-                            if (
-                              toolsRequiringConfirmation.includes(
-                                toolInvocation.toolName as keyof typeof tools
-                              ) &&
-                              toolInvocation.state === "call"
-                            ) {
-                              return (
-                                <Card
-                                  // biome-ignore lint/suspicious/noArrayIndexKey: it's fine here
-                                  key={i}
-                                  className="p-4 my-3 rounded-md bg-neutral-100 dark:bg-neutral-900"
-                                >
-                                  <div className="flex items-center gap-2 mb-3">
-                                    <div className="bg-[#F48120]/10 p-1.5 rounded-full">
-                                      <Robot
-                                        size={16}
-                                        className="text-[#F48120]"
-                                      />
+                              if (
+                                toolsRequiringConfirmation.includes(
+                                  toolInvocation.toolName as keyof typeof tools
+                                ) &&
+                                toolInvocation.state === "call"
+                              ) {
+                                return (
+                                  <Card
+                                    // biome-ignore lint/suspicious/noArrayIndexKey: it's fine here
+                                    key={i}
+                                    className="p-4 my-3 rounded-md bg-neutral-100 dark:bg-neutral-900"
+                                  >
+                                    <div className="flex items-center gap-2 mb-3">
+                                      <div className="bg-[#F48120]/10 p-1.5 rounded-full">
+                                        <Robot
+                                          size={16}
+                                          className="text-[#F48120]"
+                                        />
+                                      </div>
+                                      <h4 className="font-medium">
+                                        {toolInvocation.toolName}
+                                      </h4>
                                     </div>
-                                    <h4 className="font-medium">
-                                      {toolInvocation.toolName}
-                                    </h4>
-                                  </div>
 
-                                  <div className="mb-3">
-                                    <h5 className="text-xs font-medium mb-1 text-muted-foreground">
-                                      Arguments:
-                                    </h5>
-                                    <pre className="bg-background/80 p-2 rounded-md text-xs overflow-auto">
-                                      {JSON.stringify(
-                                        toolInvocation.args,
-                                        null,
-                                        2
-                                      )}
-                                    </pre>
-                                  </div>
+                                    <div className="mb-3">
+                                      <h5 className="text-xs font-medium mb-1 text-muted-foreground">
+                                        Arguments:
+                                      </h5>
+                                      <pre className="bg-background/80 p-2 rounded-md text-xs overflow-auto">
+                                        {JSON.stringify(
+                                          toolInvocation.args,
+                                          null,
+                                          2
+                                        )}
+                                      </pre>
+                                    </div>
 
-                                  <div className="flex gap-2 justify-end">
-                                    <Button
-                                      variant="primary"
-                                      size="sm"
-                                      onClick={() =>
-                                        addToolResult({
-                                          toolCallId,
-                                          result: APPROVAL.NO,
-                                        })
-                                      }
-                                    >
-                                      Reject
-                                    </Button>
-                                    <Tooltip content={"Accept action"}>
+                                    <div className="flex gap-2 justify-end">
                                       <Button
                                         variant="primary"
                                         size="sm"
                                         onClick={() =>
                                           addToolResult({
                                             toolCallId,
-                                            result: APPROVAL.YES,
+                                            result: APPROVAL.NO,
                                           })
                                         }
                                       >
-                                        Approve
+                                        Reject
                                       </Button>
-                                    </Tooltip>
-                                  </div>
-                                </Card>
-                              );
+                                      <Tooltip content={"Accept action"}>
+                                        <Button
+                                          variant="primary"
+                                          size="sm"
+                                          onClick={() =>
+                                            addToolResult({
+                                              toolCallId,
+                                              result: APPROVAL.YES,
+                                            })
+                                          }
+                                        >
+                                          Approve
+                                        </Button>
+                                      </Tooltip>
+                                    </div>
+                                  </Card>
+                                );
+                              }
+                              return null;
                             }
                             return null;
-                          }
-                          return null;
-                        })}
+                          })}
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Input Area */}
-        <form
-          onSubmit={(e) =>
-            handleAgentSubmit(e, {
-              data: {
-                annotations: {
-                  hello: "world",
-                },
-              },
-            })
-          }
-          className="p-3 bg-input-background absolute bottom-0 left-0 right-0 z-10 border-t border-neutral-300 dark:border-neutral-800"
-        >
-          <div className="flex items-center gap-2">
-            <div className="flex-1 relative">
-              <Input
-                disabled={pendingToolCallConfirmation}
-                placeholder={
-                  pendingToolCallConfirmation
-                    ? "Please respond to the tool confirmation above..."
-                    : "Type your message..."
-                }
-                className="pl-4 pr-10 py-2 w-full rounded-full"
-                value={agentInput}
-                onChange={handleAgentInputChange}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleAgentSubmit(e as unknown as React.FormEvent);
-                  }
-                }}
-                onValueChange={undefined}
-              />
-            </div>
-
-            <Button
-              type="submit"
-              shape="square"
-              className="rounded-full h-10 w-10 flex-shrink-0"
-              disabled={pendingToolCallConfirmation || !agentInput.trim()}
-            >
-              <PaperPlaneRight size={16} />
-            </Button>
+              );
+            })}
+            <div ref={messagesEndRef} />
           </div>
-        </form>
-      </div>
-    </div>
+        )
+        }
+
+        {/* Input Area - only show when chat is visible */}
+        {
+          !showMemos && (
+            <form
+              onSubmit={(e) =>
+                handleAgentSubmit(e, {
+                  data: {
+                    annotations: {
+                      hello: "world",
+                    },
+                  },
+                })
+              }
+              className="p-3 bg-input-background absolute bottom-0 left-0 right-0 z-10 border-t border-neutral-300 dark:border-neutral-800"
+            >
+              <div className="flex items-center gap-2">
+                <div className="flex-1 relative">
+                  <TextArea
+                    disabled={pendingToolCallConfirmation}
+                    placeholder={
+                      pendingToolCallConfirmation
+                        ? "Please respond to the tool confirmation above..."
+                        : "Type your message..."
+                    }
+                    className="pl-4 pr-10 py-2 w-full rounded-md"
+                    value={agentInput}
+                    onChange={handleAgentInputChange}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleAgentSubmit(e as unknown as React.FormEvent);
+                      }
+                    }}
+                    rows={2}
+                    onValueChange={undefined}
+                  />
+                </div>
+
+                <Button
+                  type="submit"
+                  shape="square"
+                  className="rounded-full h-10 w-10 flex-shrink-0"
+                  disabled={pendingToolCallConfirmation || !agentInput.trim()}
+                >
+                  <PaperPlaneRight size={16} />
+                </Button>
+              </div>
+            </form>
+          )
+        }
+      </div >
+    </div >
   );
 }
 
