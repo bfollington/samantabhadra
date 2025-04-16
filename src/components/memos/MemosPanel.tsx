@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Card } from "@/components/card/Card";
 import { Button } from "@/components/button/Button";
+import { TextArea } from "@/components/input/TextArea";
 import { MemoViewer } from "./MemoViewer";
-import { X } from "@phosphor-icons/react";
+import { X, Plus, Check, ArrowClockwise } from "@phosphor-icons/react";
 import ReactMarkdown from "react-markdown";
 
 interface Memo {
@@ -24,6 +25,10 @@ export function MemosPanel({ onClose }: MemosPanelProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedMemo, setSelectedMemo] = useState<Memo | null>(null);
+  const [isCreatingMemo, setIsCreatingMemo] = useState(false);
+  const [newMemoSlug, setNewMemoSlug] = useState('');
+  const [newMemoContent, setNewMemoContent] = useState('');
+  const [creatingMemo, setCreatingMemo] = useState(false);
 
   useEffect(() => {
     const fetchMemos = async () => {
@@ -44,6 +49,55 @@ export function MemosPanel({ onClose }: MemosPanelProps) {
 
     fetchMemos();
   }, []);
+  
+  // Create a new memo
+  const createMemo = async () => {
+    if (!newMemoSlug.trim()) {
+      return;
+    }
+    
+    try {
+      setCreatingMemo(true);
+      const response = await fetch("/agents/chat/default/create-memo", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          slug: newMemoSlug.trim(),
+          content: newMemoContent,
+          headers: JSON.stringify({}),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to create memo: ${response.status}`);
+      }
+
+      // Refresh the memos list
+      const refreshResponse = await fetch("/agents/chat/default/list-memos");
+      if (!refreshResponse.ok) {
+        throw new Error(`Failed to refresh memos: ${refreshResponse.status}`);
+      }
+      const refreshData = await refreshResponse.json();
+      setMemos(refreshData as Memo[]);
+      
+      // Find the newly created memo
+      const newMemo = (refreshData as Memo[]).find((memo) => memo.slug === newMemoSlug.trim());
+      if (newMemo) {
+        setSelectedMemo(newMemo);
+      }
+      
+      // Reset the form
+      setNewMemoSlug('');
+      setNewMemoContent('');
+      setIsCreatingMemo(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create memo");
+    } finally {
+      setCreatingMemo(false);
+    }
+  };
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -86,23 +140,94 @@ export function MemosPanel({ onClose }: MemosPanelProps) {
   };
 
   if (selectedMemo) {
-    return <MemoViewer memo={selectedMemo} onClose={() => setSelectedMemo(null)} />;
+    return <MemoViewer 
+      memo={selectedMemo} 
+      onClose={() => setSelectedMemo(null)}
+      allMemos={memos} 
+    />;
   }
 
   return (
     <div className="fixed inset-0 z-20 bg-white dark:bg-neutral-950 overflow-auto">
       <div className="sticky top-0 z-10 bg-white dark:bg-neutral-950 border-b border-neutral-200 dark:border-neutral-800 px-4 py-3 flex justify-between items-center">
         <h2 className="font-semibold">Memos ({memos.length})</h2>
-        <Button
-          variant="ghost"
-          size="md"
-          shape="square"
-          className="rounded-full h-9 w-9"
-          onClick={onClose}
-        >
-          <X size={20} />
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="md"
+            shape="square"
+            className="rounded-full h-9 w-9"
+            onClick={() => setIsCreatingMemo(true)}
+            title="Create new memo"
+          >
+            <Plus size={20} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="md"
+            shape="square"
+            className="rounded-full h-9 w-9"
+            onClick={onClose}
+          >
+            <X size={20} />
+          </Button>
+        </div>
       </div>
+      
+      {/* Create New Memo Dialog */}
+      {isCreatingMemo && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-30">
+          <Card className="w-full max-w-md m-4 p-6">
+            <h3 className="font-semibold text-lg mb-4">Create New Memo</h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Slug (identifier)</label>
+                <input
+                  type="text"
+                  value={newMemoSlug}
+                  onChange={(e) => setNewMemoSlug(e.target.value)}
+                  placeholder="e.g., todo, meeting-notes, ideas"
+                  className="w-full px-3 py-2 border rounded-md bg-neutral-100 dark:bg-neutral-800 border-neutral-300 dark:border-neutral-700"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium mb-1">Content</label>
+                <TextArea
+                  className="w-full min-h-[200px] bg-neutral-100 dark:bg-neutral-800 border-neutral-300 dark:border-neutral-700 p-3 rounded-md font-mono text-sm"
+                  value={newMemoContent}
+                  onChange={(e) => setNewMemoContent(e.target.value)}
+                  placeholder="Memo content..."
+                  onValueChange={undefined}
+                />
+              </div>
+              
+              <div className="flex justify-end gap-2 mt-6">
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setIsCreatingMemo(false);
+                    setNewMemoSlug('');
+                    setNewMemoContent('');
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={createMemo}
+                  disabled={!newMemoSlug.trim() || creatingMemo}
+                >
+                  {creatingMemo ? 
+                    <><ArrowClockwise size={16} className="animate-spin mr-2" /> Creating...</> : 
+                    <><Check size={16} className="mr-2" /> Create Memo</>}
+                </Button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
       
       <div className="p-4">
         {loading && (

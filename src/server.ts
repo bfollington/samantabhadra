@@ -192,11 +192,11 @@ You can create, edit, search, delete, and list memos using the memo tools. You c
     const pathParts = url.pathname.split('/');
     console.log('routing', pathParts)
 
-    // Check if this is a request to the memos API
-    if (url.pathname.includes('list-memos')) {
-      // Ensure the memos table exists
-      await this.initMemosTable();
+    // Ensure the memos table exists
+    await this.initMemosTable();
 
+    // Check which memo API we're handling
+    if (url.pathname.includes('list-memos')) {
       // Handle GET request to list all memos
       try {
         // Parse query parameters for pagination and sorting
@@ -204,17 +204,6 @@ You can create, edit, search, delete, and list memos using the memo tools. You c
         const limit = parseInt(params.get('limit') || '50', 10);
         const sortBy = params.get('sortBy') || 'modified';
         const sortOrder = params.get('sortOrder') || 'desc';
-
-        // Use simple conditionals to determine the correct ORDER BY clause
-        let orderByClause;
-        if (sortBy === 'created') {
-          orderByClause = sortOrder === 'asc' ? 'created ASC' : 'created DESC';
-        } else if (sortBy === 'slug') {
-          orderByClause = sortOrder === 'asc' ? 'slug ASC' : 'slug DESC';
-        } else {
-          // Default to 'modified'
-          orderByClause = sortOrder === 'asc' ? 'modified ASC' : 'modified DESC';
-        }
 
         // Execute the query using template literals for SQL
         let memos;
@@ -254,15 +243,202 @@ You can create, edit, search, delete, and list memos using the memo tools. You c
           { status: 500 }
         );
       }
+    } else if (url.pathname.includes('list-backlinks')) {
+      // Handle GET request to list backlinks for a slug
+      try {
+        const params = new URLSearchParams(url.search);
+        const slug = params.get('slug');
 
-      // If we reach here, it was a request to the memos API but not one we handle yet
-      return Response.json(
-        { error: 'Not implemented', method: request.method, path: url.pathname },
-        { status: 501 }
-      );
+        if (!slug) {
+          return Response.json(
+            { error: 'Slug parameter is required' },
+            { status: 400 }
+          );
+        }
+
+        // Find backlinks by searching for [[slug]] pattern in content
+        const pattern = `%[[${slug}]]%`;
+        const backlinks = await this.sql`
+          SELECT * FROM memos
+          WHERE content LIKE ${pattern}
+          ORDER BY modified DESC
+        `;
+
+        return Response.json(backlinks, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'no-cache'
+          }
+        });
+      } catch (error: unknown) {
+        console.error('Error fetching backlinks:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        return Response.json(
+          { error: 'Failed to retrieve backlinks', message: errorMessage },
+          { status: 500 }
+        );
+      }
+    } else if (url.pathname.includes('create-memo') && request.method === 'POST') {
+      // Handle POST request to create a new memo
+      try {
+        // Define the expected type for memoData
+        interface CreateMemoData {
+          slug: string;
+          content: string;
+          headers?: string;
+        }
+
+        // Parse and cast request data
+        const requestData = await request.json();
+        const memoData = requestData as CreateMemoData;
+
+        if (!memoData.slug || !memoData.content) {
+          return Response.json(
+            { error: 'Missing required fields (slug, content)' },
+            { status: 400 }
+          );
+        }
+
+        // Check if a memo with this slug already exists
+        const existingMemo = await this.sql`SELECT COUNT(*) as count FROM memos WHERE slug = ${memoData.slug}`;
+        const count = existingMemo[0]?.count;
+        if (count && typeof count === 'number' && count > 0) {
+          return Response.json(
+            { error: `A memo with slug '${memoData.slug}' already exists` },
+            { status: 409 }
+          );
+        }
+
+        // Generate a unique ID and set timestamps
+        const id = crypto.randomUUID();
+        const now = new Date().toISOString();
+        const headers = memoData.headers || JSON.stringify({});
+        
+        // Initialize with empty links structure
+        const links = JSON.stringify({ incoming: [], outgoing: [] });
+
+        // Create the new memo
+        await this.sql`
+          INSERT INTO memos (id, slug, content, headers, links, created, modified)
+          VALUES (${id}, ${memoData.slug}, ${memoData.content}, ${headers}, ${links}, ${now}, ${now})
+        `;
+
+        // Process backlinks
+        // Extract backlinks from content (all [[slug]] occurrences)
+        const backlinkPattern = /\[\[(.*?)\]\]/g;
+        const matches = memoData.content.match(backlinkPattern) || [];
+        const outgoingLinks = [...new Set(matches.map((match: string) => match.slice(2, -2)))];
+
+        if (outgoingLinks.length > 0) {
+          // Update this memo's outgoing links
+          const outgoingLinksObj = JSON.stringify({ incoming: [], outgoing: outgoingLinks });
+          await this.sql`
+            UPDATE memos
+            SET links = ${outgoingLinksObj}
+            WHERE id = ${id}
+          `;
+
+          // Update incoming links for each referenced memo
+          for (const targetSlug of outgoingLinks) {
+            // Check if target memo exists
+            const targetExists = await this.sql`SELECT id, links FROM memos WHERE slug = ${targetSlug}`;
+            
+            if (targetExists.length > 0) {
+              const targetId = targetExists[0].id;
+              let targetLinks: { incoming: string[], outgoing: string[] };
+              
+              try {
+                const linksStr = targetExists[0].links as string;
+                targetLinks = JSON.parse(linksStr);
+              } catch {
+                targetLinks = { incoming: [], outgoing: [] };
+              }
+              
+              // Add this memo's slug to target's incoming links if not already there
+              if (!targetLinks.incoming.includes(memoData.slug)) {
+                targetLinks.incoming.push(memoData.slug);
+                
+                // Update the target memo's links
+                const updatedLinksJson = JSON.stringify(targetLinks);
+                await this.sql`
+                  UPDATE memos
+                  SET links = ${updatedLinksJson}
+                  WHERE id = ${targetId}
+                `;
+              }
+            }
+          }
+        }
+
+        // Return the newly created memo
+        const created = await this.sql`SELECT * FROM memos WHERE id = ${id}`;
+        const createdMemo = created.length > 0 ? created[0] : null;
+
+        return Response.json(createdMemo, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'no-cache'
+          }
+        });
+      } catch (error: unknown) {
+        console.error('Error creating memo:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        return Response.json(
+          { error: 'Failed to create memo', message: errorMessage },
+          { status: 500 }
+        );
+      }
+    } else if (url.pathname.includes('edit-memo') && request.method === 'POST') {
+      // Handle POST request to edit a memo
+      try {
+        const memoData = await request.json();
+
+        if (!memoData.id || !memoData.slug || !memoData.content) {
+          return Response.json(
+            { error: 'Missing required fields (id, slug, content)' },
+            { status: 400 }
+          );
+        }
+
+        // Update the memo in the database
+        const now = new Date().toISOString();
+        const headers = JSON.stringify(memoData.headers || {});
+        const links = JSON.stringify(memoData.links || {});
+
+        await this.sql`
+          UPDATE memos
+          SET
+            content = ${memoData.content},
+            headers = ${headers},
+            links = ${links},
+            modified = ${now}
+          WHERE id = ${memoData.id}
+        `;
+
+        // Return the updated memo
+        const updated = await this.sql`SELECT * FROM memos WHERE id = ${memoData.id}`;
+        const updatedMemo = updated.length > 0 ? updated[0] : null;
+
+        return Response.json(updatedMemo, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'no-cache'
+          }
+        });
+      } catch (error: unknown) {
+        console.error('Error editing memo:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        return Response.json(
+          { error: 'Failed to edit memo', message: errorMessage },
+          { status: 500 }
+        );
+      }
     }
 
-    // Not a memos API request
+    // Not a memos API request we handle
     return null;
   }
 
