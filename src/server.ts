@@ -136,6 +136,19 @@ Examples:
 You are encouraged to use this [[backlink]] syntax in your responses when referring to existing memos. When referencing memos in your messages, always use the [[slug]] format to create clickable links.
 
 You can create, edit, search, delete, and list memos using the memo tools. You can also find all memos that link to a specific memo using the findBacklinks tool.
+
+## Workflows
+
+Workflows are special memos that contain instructions for completing specific tasks or processes. They can be created, listed, and executed using the workflow tools.
+
+As an assistant, you can:
+- List available workflows with listWorkflows
+- Execute a workflow with executeWorkflow
+- Save the current conversation as a workflow with saveWorkflow
+
+When saving a workflow, abstract the general pattern of the conversation without the specific details or answers given.
+
+Workflows are powerful for automating repetitive tasks and creating reusable processes. When executing a workflow, carefully follow the instructions and use appropriate tools to accomplish each step.
 `,
             messages: processedMessages,
             tools,

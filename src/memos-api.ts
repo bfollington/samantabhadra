@@ -1,6 +1,7 @@
 /**
  * API handlers for memo functionality
  */
+import { create } from "domain";
 import type { Chat } from "./server";
 
 interface Memo {
@@ -167,7 +168,7 @@ export async function getMemo(agent: Chat, request: Request): Promise<Response> 
     }
 
     const memo = await agent.sql`SELECT * FROM memos WHERE slug = ${slug}`;
-    
+
     if (!memo || memo.length === 0) {
       return Response.json(
         { error: `Memo with slug '${slug}' not found` },
@@ -221,8 +222,13 @@ export async function createMemo(agent: Chat, request: Request): Promise<Respons
     // Generate a unique ID and set timestamps
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
-    const headers = memoData.headers || JSON.stringify({});
-    
+
+    // Properly handle headers - may already be a JSON string
+    let headers = "{}";
+    if (memoData.headers) {
+      headers = typeof memoData.headers === 'string' ? memoData.headers : JSON.stringify(memoData.headers);
+    }
+
     // Initialize with empty links structure
     const links = JSON.stringify({ incoming: [], outgoing: [] });
 
@@ -251,22 +257,22 @@ export async function createMemo(agent: Chat, request: Request): Promise<Respons
       for (const targetSlug of outgoingLinks) {
         // Check if target memo exists
         const targetExists = await agent.sql`SELECT id, links FROM memos WHERE slug = ${targetSlug}`;
-        
+
         if (targetExists.length > 0) {
           const targetId = targetExists[0].id;
           let targetLinks: { incoming: string[], outgoing: string[] };
-          
+
           try {
             const linksStr = targetExists[0].links as string;
             targetLinks = JSON.parse(linksStr);
           } catch {
             targetLinks = { incoming: [], outgoing: [] };
           }
-          
+
           // Add this memo's slug to target's incoming links if not already there
           if (!targetLinks.incoming.includes(memoData.slug)) {
             targetLinks.incoming.push(memoData.slug);
-            
+
             // Update the target memo's links
             const updatedLinksJson = JSON.stringify(targetLinks);
             await agent.sql`
@@ -317,8 +323,18 @@ export async function editMemo(agent: Chat, request: Request): Promise<Response>
 
     // Update the memo in the database
     const now = new Date().toISOString();
-    const headers = JSON.stringify(memoData.headers || {});
-    const links = JSON.stringify(memoData.links || {});
+
+    // Properly handle headers - may already be a JSON string
+    let headers = "{}";
+    if (memoData.headers) {
+      headers = typeof memoData.headers === 'string' ? memoData.headers : JSON.stringify(memoData.headers);
+    }
+
+    // Handle links similarly
+    let links = "{}";
+    if (memoData.links) {
+      links = typeof memoData.links === 'string' ? memoData.links : JSON.stringify(memoData.links);
+    }
 
     await agent.sql`
       UPDATE memos
@@ -369,7 +385,7 @@ export async function deleteMemo(agent: Chat, request: Request): Promise<Respons
 
     // First get the memo to ensure it exists
     const memo = await agent.sql`SELECT * FROM memos WHERE id = ${id}`;
-    
+
     if (!memo || memo.length === 0) {
       return Response.json(
         { error: `Memo with ID '${id}' not found` },
@@ -397,15 +413,48 @@ export async function deleteMemo(agent: Chat, request: Request): Promise<Respons
   }
 }
 
+async function createRealtimeSession(agent: Chat, request: Request): Promise<Response> {
+  try {
+    const response = await fetch(
+      "https://api.openai.com/v1/realtime/transcription_sessions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          input_audio_transcription: {
+            model: 'gpt-4o-transcribe',
+            prompt: undefined,
+          },
+          turn_detection: {
+            type: 'server_vad',
+          }
+        }),
+      },
+    );
+
+    const data = await response.json();
+    return Response.json(data);
+  } catch (error: any) {
+    console.error("Token generation error:", error);
+    return Response.json(
+      { error: 'Failed to generate token', message: error?.message },
+      { status: 500 }
+    );
+  }
+}
+
 /**
  * Route handler for memo-related API requests
  */
 export async function handleMemosApi(agent: Chat, request: Request): Promise<Response | null> {
   const url = new URL(request.url);
-  
+
   // Ensure the memos table exists
   await initMemosTable(agent);
-  
+
   // Route to the appropriate handler based on the URL path
   if (url.pathname.includes('list-memos')) {
     return listMemos(agent, request);
@@ -419,8 +468,10 @@ export async function handleMemosApi(agent: Chat, request: Request): Promise<Res
     return editMemo(agent, request);
   } else if (url.pathname.includes('delete-memo')) {
     return deleteMemo(agent, request);
+  } else if (url.pathname.includes('realtime-token')) {
+    return createRealtimeSession(agent, request);
   }
-  
+
   // Not a memos API request
   return null;
 }

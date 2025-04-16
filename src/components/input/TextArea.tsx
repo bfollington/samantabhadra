@@ -76,7 +76,7 @@ export const TextArea = ({
 
       <textarea
         className={cn(
-          "placeholder:text-ob-base-100 w-full bg-transparent focus:outline-none resize-y",
+          "placeholder:text-ob-base-100 w-full bg-transparent focus:outline-none resize-y min-h-[3em]",
           {
             "text-ob-destructive": !isValid,
           }
@@ -97,10 +97,8 @@ export const TextArea = ({
         inputClasses,
         {
           "text-ob-destructive transition-colors": !isValid,
-          "add-size-sm": size === "sm",
-          "add-size-md": size === "md",
-          "add-size-base": size === "base",
           "resize-y": true,
+          'min-h-[5em]': true
         },
         className
       )}

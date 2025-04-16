@@ -26,6 +26,7 @@ import {
   Trash,
   Note,
 } from "@phosphor-icons/react";
+import { useRealtimeSession } from "./hooks/useRealtimeSession";
 
 // List of tools that require human confirmation
 const toolsRequiringConfirmation: (keyof typeof tools)[] = [
@@ -106,6 +107,20 @@ export default function Chat() {
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
+  const { startSession, stopSession, sendTextMessage, isSessionActive, events, transcription } = useRealtimeSession();
+
+  // Update agent input when transcription changes
+  useEffect(() => {
+    if (transcription.length > 0 && isSessionActive) {
+      // Create a synthetic event that handleAgentInputChange expects
+      const syntheticEvent = {
+        target: { value: transcription.join(' ') },
+      } as React.ChangeEvent<HTMLTextAreaElement>;
+
+      handleAgentInputChange(syntheticEvent);
+    }
+  }, [transcription, isSessionActive, handleAgentInputChange]);
+
   return (
     <div className="h-[100vh] w-full p-4 flex justify-center items-center bg-fixed overflow-hidden">
       <HasOpenAIKey />
@@ -142,14 +157,16 @@ export default function Chat() {
             />
           </div>
 
-          <div className="flex items-center gap-2 mr-2">
-            <Note size={16} />
-            <Toggle
-              toggled={showMemos}
-              aria-label="Toggle memos panel"
-              onClick={() => setShowMemos((prev) => !prev)}
-            />
-          </div>
+          <Button
+            variant="ghost"
+            size="md"
+            shape="square"
+            className="rounded-full h-9 w-9"
+            onClick={() => setShowMemos((prev) => !prev)}
+            aria-label="Toggle memos panel"
+          >
+            <Note size={20} />
+          </Button>
 
           <Button
             variant="ghost"
@@ -253,7 +270,7 @@ export default function Chat() {
                                         let match;
                                         let containsBacklinks = false;
                                         const matches = [];
-                                        
+
                                         // First check if the line contains any backlinks
                                         while ((match = backlinkRegex.exec(line)) !== null) {
                                           containsBacklinks = true;
@@ -263,20 +280,20 @@ export default function Chat() {
                                             index: match.index
                                           });
                                         }
-                                        
+
                                         // If the line has backlinks, process it specially
                                         if (containsBacklinks) {
                                           const parts = [];
                                           let lastIndex = 0;
-                                          
+
                                           // Build the elements with clickable backlinks
                                           matches.forEach((match, i) => {
                                             if (match.index > lastIndex) {
                                               parts.push(line.substring(lastIndex, match.index));
                                             }
-                                            
+
                                             parts.push(
-                                              <button 
+                                              <button
                                                 key={`backlink-${lineIndex}-${i}`}
                                                 className="text-[#F48120] hover:underline font-medium"
                                                 onClick={() => {
@@ -287,24 +304,24 @@ export default function Chat() {
                                                 {match.slug}
                                               </button>
                                             );
-                                            
+
                                             lastIndex = match.index + match.fullMatch.length;
                                           });
-                                          
+
                                           if (lastIndex < line.length) {
                                             parts.push(line.substring(lastIndex));
                                           }
-                                          
+
                                           return <p key={lineIndex} className="my-1">{parts}</p>;
                                         }
-                                        
+
                                         // Check if line consists solely of a backlink (for backward compatibility)
                                         const standaloneMatch = line.trim().match(/^\[\[(.*?)\]\]$/);
                                         if (standaloneMatch) {
                                           const slug = standaloneMatch[1];
                                           return (
                                             <p key={lineIndex} className="my-1">
-                                              <button 
+                                              <button
                                                 className="text-[#F48120] hover:underline font-medium"
                                                 onClick={() => {
                                                   setShowMemos(true);
@@ -316,7 +333,7 @@ export default function Chat() {
                                             </p>
                                           );
                                         }
-                                        
+
                                         // Otherwise use ReactMarkdown with components for this line
                                         return (
                                           <ReactMarkdown key={lineIndex} components={{
@@ -324,7 +341,7 @@ export default function Chat() {
                                             p: ({ children }) => {
                                               return (
                                                 <p>
-                                                  <BacklinkRenderer 
+                                                  <BacklinkRenderer
                                                     text={String(children)}
                                                     onNavigateToMemo={(slug) => {
                                                       // Navigate to the memos panel and select the memo with the given slug
@@ -340,7 +357,7 @@ export default function Chat() {
                                             // Handle other text elements
                                             text: ({ children }) => {
                                               return (
-                                                <BacklinkRenderer 
+                                                <BacklinkRenderer
                                                   text={String(children)}
                                                   onNavigateToMemo={(slug) => {
                                                     // Navigate to the memos panel and select the memo with the given slug
@@ -496,6 +513,28 @@ export default function Chat() {
                     onValueChange={undefined}
                   />
                 </div>
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="md"
+                  shape="square"
+                  className="rounded-full h-10 w-10 flex-shrink-0"
+                  onClick={isSessionActive ? stopSession : startSession}
+                  aria-label={isSessionActive ? "Stop voice session" : "Start voice session"}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+                    {isSessionActive ? (
+                      <circle cx="12" cy="12" r="10" fill="currentColor" />
+                    ) : (
+                      <>
+                        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                        <line x1="12" y1="19" x2="12" y2="22" />
+                      </>
+                    )}
+                  </svg>
+                </Button>
 
                 <Button
                   type="submit"
