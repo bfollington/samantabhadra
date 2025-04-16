@@ -40,6 +40,18 @@ export function MemosPanel({ onClose }: MemosPanelProps) {
         }
         const data = await response.json();
         setMemos(data as Memo[]);
+        
+        // Check if we need to open a specific memo
+        const openMemoSlug = sessionStorage.getItem('openMemoSlug');
+        if (openMemoSlug) {
+          // Find the memo with this slug
+          const memoToOpen = (data as Memo[]).find(memo => memo.slug === openMemoSlug);
+          if (memoToOpen) {
+            setSelectedMemo(memoToOpen);
+          }
+          // Clear the sessionStorage item so it doesn't persist
+          sessionStorage.removeItem('openMemoSlug');
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load memos");
       } finally {

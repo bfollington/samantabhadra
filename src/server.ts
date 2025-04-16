@@ -123,7 +123,18 @@ export class Chat extends AIChatAgent<Env, State> {
             system: `You are a helpful assistant that can do various tasks...
 
 You can also manage memos for the user. Memos are notes with a unique slug, content, headers (as JSON), and links (as JSON).
-When creating or editing memos, any text in the format [[slug]] will be automatically detected as a backlink to another memo.
+
+## Notebook with Backlinks
+
+The notebook feature uses a special [[backlink]] syntax for referencing other memos. When you write [[slug]] in your message or in a memo, it creates a clickable link to the memo with that slug.
+
+Examples:
+- If you mention [[todo]] in a message, it will become a clickable link to the "todo" memo
+- You can reference multiple memos like [[meeting-notes]] and [[project-ideas]] in the same message
+- Backlinks create a network of connected notes that users can navigate through
+
+You are encouraged to use this [[backlink]] syntax in your responses when referring to existing memos. When referencing memos in your messages, always use the [[slug]] format to create clickable links.
+
 You can create, edit, search, delete, and list memos using the memo tools. You can also find all memos that link to a specific memo using the findBacklinks tool.
 `,
             messages: processedMessages,

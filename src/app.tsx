@@ -5,6 +5,7 @@ import type { Message } from "@ai-sdk/react";
 import { APPROVAL } from "./shared";
 import type { tools } from "./tools";
 import ReactMarkdown from "react-markdown";
+import { BacklinkRenderer } from "@/components/chat/BacklinkRenderer";
 
 // Component imports
 import { Button } from "@/components/button/Button";
@@ -245,12 +246,117 @@ export default function Chat() {
                                         </span>
                                       )}
                                     <span className="text-sm whitespace-pre-wrap">
-                                      <ReactMarkdown>
-                                        {part.text.replace(
-                                          /^scheduled message: /,
-                                          ""
-                                        )}
-                                      </ReactMarkdown>
+                                      {/* Split by newlines to handle standalone backlinks */}
+                                      {part.text.replace(/^scheduled message: /, "").split('\n').map((line, lineIndex) => {
+                                        // Check if this line contains any backlinks
+                                        const backlinkRegex = /\[\[(.*?)\]\]/g;
+                                        let match;
+                                        let containsBacklinks = false;
+                                        const matches = [];
+                                        
+                                        // First check if the line contains any backlinks
+                                        while ((match = backlinkRegex.exec(line)) !== null) {
+                                          containsBacklinks = true;
+                                          matches.push({
+                                            fullMatch: match[0],
+                                            slug: match[1],
+                                            index: match.index
+                                          });
+                                        }
+                                        
+                                        // If the line has backlinks, process it specially
+                                        if (containsBacklinks) {
+                                          const parts = [];
+                                          let lastIndex = 0;
+                                          
+                                          // Build the elements with clickable backlinks
+                                          matches.forEach((match, i) => {
+                                            if (match.index > lastIndex) {
+                                              parts.push(line.substring(lastIndex, match.index));
+                                            }
+                                            
+                                            parts.push(
+                                              <button 
+                                                key={`backlink-${lineIndex}-${i}`}
+                                                className="text-[#F48120] hover:underline font-medium"
+                                                onClick={() => {
+                                                  setShowMemos(true);
+                                                  sessionStorage.setItem('openMemoSlug', match.slug);
+                                                }}
+                                              >
+                                                {match.slug}
+                                              </button>
+                                            );
+                                            
+                                            lastIndex = match.index + match.fullMatch.length;
+                                          });
+                                          
+                                          if (lastIndex < line.length) {
+                                            parts.push(line.substring(lastIndex));
+                                          }
+                                          
+                                          return <p key={lineIndex} className="my-1">{parts}</p>;
+                                        }
+                                        
+                                        // Check if line consists solely of a backlink (for backward compatibility)
+                                        const standaloneMatch = line.trim().match(/^\[\[(.*?)\]\]$/);
+                                        if (standaloneMatch) {
+                                          const slug = standaloneMatch[1];
+                                          return (
+                                            <p key={lineIndex} className="my-1">
+                                              <button 
+                                                className="text-[#F48120] hover:underline font-medium"
+                                                onClick={() => {
+                                                  setShowMemos(true);
+                                                  sessionStorage.setItem('openMemoSlug', slug);
+                                                }}
+                                              >
+                                                {slug}
+                                              </button>
+                                            </p>
+                                          );
+                                        }
+                                        
+                                        // Otherwise use ReactMarkdown with components for this line
+                                        return (
+                                          <ReactMarkdown key={lineIndex} components={{
+                                            // Override paragraph to enable backlink navigation
+                                            p: ({ children }) => {
+                                              return (
+                                                <p>
+                                                  <BacklinkRenderer 
+                                                    text={String(children)}
+                                                    onNavigateToMemo={(slug) => {
+                                                      // Navigate to the memos panel and select the memo with the given slug
+                                                      setShowMemos(true);
+                                                      // Find the memo in the list and select it
+                                                      // Will be handled after the panel is shown
+                                                      sessionStorage.setItem('openMemoSlug', slug);
+                                                    }}
+                                                  />
+                                                </p>
+                                              );
+                                            },
+                                            // Handle other text elements
+                                            text: ({ children }) => {
+                                              return (
+                                                <BacklinkRenderer 
+                                                  text={String(children)}
+                                                  onNavigateToMemo={(slug) => {
+                                                    // Navigate to the memos panel and select the memo with the given slug
+                                                    setShowMemos(true);
+                                                    // Find the memo in the list and select it
+                                                    // Will be handled after the panel is shown
+                                                    sessionStorage.setItem('openMemoSlug', slug);
+                                                  }}
+                                                />
+                                              );
+                                            }
+                                          }}>
+                                            {line}
+                                          </ReactMarkdown>
+                                        );
+                                      })}
                                     </span>
                                   </Card>
                                   <p
