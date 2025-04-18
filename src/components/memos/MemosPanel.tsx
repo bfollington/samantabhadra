@@ -33,8 +33,25 @@ export function MemosPanel({ onClose }: MemosPanelProps) {
   const [workflowTitle, setWorkflowTitle] = useState('');
   const [workflowDescription, setWorkflowDescription] = useState('');
 
+  // Function to refresh memos list
+  const refreshMemos = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch("/agents/chat/default/list-memos");
+      if (!response.ok) {
+        throw new Error(`Failed to fetch memos: ${response.status}`);
+      }
+      const data = await response.json();
+      setMemos(data as Memo[]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load memos");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchMemos = async () => {
+    const fetchInitialMemos = async () => {
       try {
         setLoading(true);
         const response = await fetch("/agents/chat/default/list-memos");
@@ -62,7 +79,7 @@ export function MemosPanel({ onClose }: MemosPanelProps) {
       }
     };
 
-    fetchMemos();
+    fetchInitialMemos();
   }, []);
 
   // Create a new memo
@@ -100,17 +117,15 @@ export function MemosPanel({ onClose }: MemosPanelProps) {
       }
 
       // Refresh the memos list
-      const refreshResponse = await fetch("/agents/chat/default/list-memos");
-      if (!refreshResponse.ok) {
-        throw new Error(`Failed to refresh memos: ${refreshResponse.status}`);
-      }
-      const refreshData = await refreshResponse.json();
-      setMemos(refreshData as Memo[]);
-
-      // Find the newly created memo
-      const newMemo = (refreshData as Memo[]).find((memo) => memo.slug === newMemoSlug.trim());
-      if (newMemo) {
-        setSelectedMemo(newMemo);
+      await refreshMemos();
+      
+      // Directly fetch the newly created memo
+      const memoResponse = await fetch(`/agents/chat/default/get-memo?slug=${newMemoSlug.trim()}`);
+      if (memoResponse.ok) {
+        const newMemo = await memoResponse.json() as Memo;
+        if (newMemo && newMemo.id) {
+          setSelectedMemo(newMemo);
+        }
       }
 
       // Reset the form
@@ -171,6 +186,7 @@ export function MemosPanel({ onClose }: MemosPanelProps) {
     return <MemoViewer
       memo={selectedMemo}
       onClose={() => setSelectedMemo(null)}
+      onDelete={refreshMemos}
       allMemos={memos}
     />;
   }

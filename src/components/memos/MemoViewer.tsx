@@ -2,7 +2,7 @@ import { Button } from "@/components/button/Button";
 import { Card } from "@/components/card/Card";
 import { TextArea } from "@/components/input/TextArea";
 import { Toggle } from "@/components/toggle/Toggle";
-import { X, PencilSimple, ArrowClockwise, Check, FlowArrow, Play, ArrowRight } from "@phosphor-icons/react";
+import { X, PencilSimple, ArrowClockwise, Check, FlowArrow, Play, ArrowRight, Trash } from "@phosphor-icons/react";
 import { useState, useEffect, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 
@@ -21,6 +21,8 @@ interface MemoViewerProps {
   onClose: () => void;
   // Optional list of all memos (will be populated by MemosPanel)
   allMemos?: Memo[];
+  // Optional callback to refresh the memo list after deletion
+  onDelete?: () => void;
 }
 
 // Define the header structure
@@ -32,7 +34,7 @@ interface MemoHeaders {
   keywords?: string[];
 }
 
-export function MemoViewer({ memo, onClose, allMemos = [] }: MemoViewerProps) {
+export function MemoViewer({ memo, onClose, onDelete, allMemos = [] }: MemoViewerProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState(memo.content);
   const [saving, setSaving] = useState(false);
@@ -41,6 +43,8 @@ export function MemoViewer({ memo, onClose, allMemos = [] }: MemoViewerProps) {
   const [loadingBacklinks, setLoadingBacklinks] = useState(false);
   const [executingWorkflow, setExecutingWorkflow] = useState(false);
   const [isWorkflow, setIsWorkflow] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Parse headers to get topic and keywords if available
   const parseHeaders = (headersString: string): MemoHeaders => {
@@ -287,7 +291,32 @@ export function MemoViewer({ memo, onClose, allMemos = [] }: MemoViewerProps) {
 
   // End of navigateToMemo function
 
-  // No duplicate handler needed
+  // Function to delete the current memo
+  const deleteMemo = async () => {
+    try {
+      setDeleting(true);
+      const response = await fetch(`/agents/chat/default/delete-memo?id=${currentMemo.id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to delete memo: ${response.status}`);
+      }
+
+      // Call onDelete callback if provided to refresh the memo list
+      if (onDelete) {
+        onDelete();
+      }
+
+      // Close the memo viewer after successful deletion
+      onClose();
+    } catch (error) {
+      console.error("Error deleting memo:", error);
+    } finally {
+      setDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-white dark:bg-neutral-950 z-50 overflow-auto flex flex-col">
@@ -353,6 +382,16 @@ export function MemoViewer({ memo, onClose, allMemos = [] }: MemoViewerProps) {
             </>
           ) : (
             <>
+              <Button
+                variant="ghost"
+                size="md"
+                shape="square"
+                className="rounded-full h-9 w-9"
+                onClick={() => setShowDeleteConfirm(true)}
+                aria-label="Delete memo"
+              >
+                <Trash size={20} />
+              </Button>
               <Button
                 variant="ghost"
                 size="md"
@@ -639,6 +678,38 @@ export function MemoViewer({ memo, onClose, allMemos = [] }: MemoViewerProps) {
           <div>Modified: {formatDate(currentMemo.modified)}</div>
         </div>
       </div>
+
+      {/* Delete confirmation dialog */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+          <div className="bg-white dark:bg-neutral-900 rounded-lg p-5 max-w-md w-full">
+            <h3 className="text-lg font-semibold mb-3">Delete Memo</h3>
+            <p className="mb-4">Are you sure you want to delete "{currentMemo.slug}"? This action cannot be undone.</p>
+            
+            <div className="flex justify-end gap-3">
+              <Button 
+                variant="ghost" 
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleting}
+              >
+                Cancel
+              </Button>
+              <Button 
+                variant="destructive" 
+                onClick={deleteMemo}
+                disabled={deleting}
+              >
+                {deleting ? (
+                  <>
+                    <ArrowClockwise size={16} className="animate-spin mr-2" />
+                    Deleting...
+                  </>
+                ) : 'Delete'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

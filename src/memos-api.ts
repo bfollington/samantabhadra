@@ -466,7 +466,7 @@ export async function handleMemosApi(agent: Chat, request: Request): Promise<Res
     return createMemo(agent, request);
   } else if (url.pathname.includes('edit-memo') && request.method === 'POST') {
     return editMemo(agent, request);
-  } else if (url.pathname.includes('delete-memo')) {
+  } else if (url.pathname.includes('delete-memo') && (request.method === 'DELETE' || request.method === 'GET')) {
     return deleteMemo(agent, request);
   } else if (url.pathname.includes('realtime-token')) {
     return createRealtimeSession(agent, request);
