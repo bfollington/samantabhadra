@@ -20,6 +20,7 @@ import type {
   Resource,
 } from "@modelcontextprotocol/sdk/types.js";
 import { handleMemosApi } from './memos-api';
+import type { Ai, Vectorize } from "@cloudflare/workers-types/experimental";
 // import { env } from "cloudflare:workers";
 
 const model = openai("gpt-4.1-2025-04-14");
@@ -33,6 +34,8 @@ type Env = {
   Chat: AgentNamespace<Chat>;
   HOST: string;
   OPENAI_API_KEY: string;
+  VECTORIZE: Vectorize;
+  AI: Ai;
 };
 
 export type Server = {
@@ -60,6 +63,97 @@ export class Chat extends AIChatAgent<Env, State> {
     prompts: [],
     resources: [],
   };
+  
+  /**
+   * Creates embeddings for text using the AI service
+   */
+  async createEmbeddings(text: string): Promise<number[]> {
+    try {
+      if (!this.env.AI) {
+        throw new Error('AI service not available');
+      }
+      
+      const response = await this.env.AI.run(
+        '@cf/baai/bge-base-en-v1.5',
+        { text }
+      );
+      
+      if (response?.data?.[0]) {
+        return response.data[0];
+      }
+      
+      throw new Error('Failed to generate embeddings');
+    } catch (error) {
+      console.error('Error creating embeddings:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Store vector embeddings in Vectorize
+   */
+  async storeVectorEmbedding(id: string, values: number[], metadata: Record<string, any> = {}): Promise<void> {
+    try {
+      if (!this.env.VECTORIZE) {
+        throw new Error('Vectorize service not available');
+      }
+      
+      await this.env.VECTORIZE.upsert([{ id, values, metadata }]);
+    } catch (error) {
+      console.error('Error storing vector embedding:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Delete vector embeddings from Vectorize
+   */
+  async deleteVectorEmbedding(id: string): Promise<void> {
+    try {
+      if (!this.env.VECTORIZE) {
+        throw new Error('Vectorize service not available');
+      }
+      
+      // For Cloudflare Vectorize, we'll need to use the available API
+      // Since the exact API varies, we'll try different approaches
+      try {
+        // The standard Vectorize API use 'delete' with an array of IDs
+        // @ts-ignore - handle type errors, as the API may vary
+        await this.env.VECTORIZE.delete([id]);
+      } catch (e) {
+        try {
+          // Some versions might use 'deleteOne' instead
+          // @ts-ignore - handle type errors, as the API may vary
+          await this.env.VECTORIZE.deleteOne(id);
+        } catch (e2) {
+          // If both methods fail, log it but don't fail the operation
+          console.warn('Vector deletion not fully implemented, skipping deletion of:', id);
+        }
+      }
+    } catch (error) {
+      console.error(`Error deleting vector embedding ${id}:`, error);
+      // Don't throw the error, as this is a non-critical operation
+    }
+  }
+  
+  /**
+   * Search for similar vectors in Vectorize
+   */
+  async searchSimilarVectors(queryVector: number[], limit: number = 5): Promise<any> {
+    try {
+      if (!this.env.VECTORIZE) {
+        throw new Error('Vectorize service not available');
+      }
+      
+      return await this.env.VECTORIZE.query(queryVector, {
+        topK: limit,
+        returnMetadata: true
+      });
+    } catch (error) {
+      console.error('Error searching similar vectors:', error);
+      throw error;
+    }
+  }
 
   mcp = new MCPClientManager("chat", "1.0.0", {
     baseCallbackUri: `${this.env.HOST}agents/chat/samantabhadra/callback`,

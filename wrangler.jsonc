@@ -12,6 +12,15 @@
   "vars": {
     "HOST": "https://samantabhadra.bfollington.workers.dev/"
   },
+  "vectorize": [
+    {
+      "binding": "VECTORIZE",
+      "index_name": "embeddings-index"
+    }
+  ],
+  "ai": {
+    "binding": "AI"
+  },
   "durable_objects": {
     "bindings": [
       {
