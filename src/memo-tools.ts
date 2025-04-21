@@ -7,6 +7,8 @@ import { z } from "zod";
 
 import { agentContext } from "./server";
 import type { Chat } from "./server";
+// Import the semantic search tool from dedicated file
+import { semanticSearchMemos } from './semantic-search';
 
 // Define memo schema
 export type Memo = {
@@ -149,7 +151,13 @@ async function updateBacklinks(agent: any, slug: string, content: string) {
         SELECT links FROM memos WHERE slug = ${targetSlug}
       `;
       
-      let targetLinksObj = { incoming: [], outgoing: [] };
+      // Define typed structure for links object
+      interface LinksObject {
+        incoming: string[];
+        outgoing: string[];
+      }
+      
+      let targetLinksObj: LinksObject = { incoming: [], outgoing: [] };
       
       try {
         // Get links from the result
@@ -157,8 +165,8 @@ async function updateBacklinks(agent: any, slug: string, content: string) {
         if (targetLinksStr && typeof targetLinksStr === 'string') {
           const parsedLinks = JSON.parse(targetLinksStr);
           targetLinksObj = { 
-            incoming: Array.isArray(parsedLinks.incoming) ? parsedLinks.incoming : [],
-            outgoing: Array.isArray(parsedLinks.outgoing) ? parsedLinks.outgoing : []
+            incoming: Array.isArray(parsedLinks.incoming) ? parsedLinks.incoming as string[] : [],
+            outgoing: Array.isArray(parsedLinks.outgoing) ? parsedLinks.outgoing as string[] : []
           };
         }
       } catch (e) {
@@ -167,7 +175,7 @@ async function updateBacklinks(agent: any, slug: string, content: string) {
       }
       
       // Add the current slug to incoming links if not already there
-      if (!targetLinksObj.incoming.includes(slug)) {
+      if (typeof slug === 'string' && !targetLinksObj.incoming.includes(slug)) {
         targetLinksObj.incoming.push(slug);
         
         // Update the target memo's links
@@ -324,12 +332,14 @@ const editMemo = tool({
           let vector_id = memo.vector_id && typeof memo.vector_id === 'string' ? memo.vector_id : `memo-${memoId}`;
           
           // Generate new embeddings for the updated content
-          const embeddings = await agent.createEmbeddings(updatedContent);
+          // Ensure content is a string
+          const contentToEmbed = typeof updatedContent === 'string' ? updatedContent : String(updatedContent);
+          const embeddings = await agent.createEmbeddings(contentToEmbed);
           
           // Store the updated vector embedding
           const memoMetadata = {
             memo_id: typeof memo.id === 'string' ? memo.id : '',
-            slug: slug
+            slug: typeof slug === 'string' ? slug : ''
           };
           await agent.storeVectorEmbedding(vector_id, embeddings, memoMetadata);
           
@@ -364,7 +374,10 @@ const editMemo = tool({
         }
         
         // Process and update backlinks when content changes
-        const backlinks = await updateBacklinks(agent, slug, updatedContent);
+        // Ensure slug and content are strings
+        const slugStr = typeof slug === 'string' ? slug : '';
+        const contentStr = typeof updatedContent === 'string' ? updatedContent : String(updatedContent);
+        const backlinks = await updateBacklinks(agent, slugStr, contentStr);
       } else {
         // If content wasn't updated, just update the other fields
         if (slug && typeof slug === 'string') {
@@ -730,80 +743,12 @@ const findBacklinks = tool({
   },
 });
 
-/**
- * Tool to search for semantically similar memos using vector embeddings
- * This executes automatically without requiring human confirmation
- */
-const semanticSearchMemos = tool({
-  description: "Find memos that are semantically similar to the provided query using vector embeddings",
-  parameters: z.object({
-    query: z.string().describe("The text to find semantically similar memos for"),
-    limit: z.number().optional().describe("Maximum number of results to return (default: 5)"),
-  }),
-  execute: async ({ query, limit = 5 }) => {
-    const agent = agentContext.getStore() as Chat | null;
-    if (!agent) {
-      throw new Error("No agent found");
-    }
-
-    try {
-      // Ensure the memos table exists
-      await initMemosTable();
-
-      // Generate embeddings for the query text
-      const embeddings = await agent.createEmbeddings(query);
-      
-      // Search for similar vectors
-      const vectorResults = await agent.searchSimilarVectors(embeddings, limit);
-      
-      if (!vectorResults || !vectorResults.matches || vectorResults.matches.length === 0) {
-        return `No semantically similar memos found for "${query}".`;
-      }
-      
-      // Extract memo IDs from the vector results
-      const memoIds = vectorResults.matches
-        .filter((match: any) => match.metadata && typeof match.metadata === 'object' && 'memo_id' in match.metadata)
-        .map((match: any) => match.metadata.memo_id);
-
-      if (memoIds.length === 0) {
-        return `No semantically similar memos found for "${query}".`;
-      }
-      
-      // Convert array to comma-separated list of quoted IDs for SQL IN clause
-      const idList = memoIds.map((id: string) => `'${id}'`).join(',');
-      
-      // Fetch the actual memos
-      const memos = await agent.sql<Memo>`
-        SELECT * FROM memos 
-        WHERE id IN (${idList})
-        ORDER BY modified DESC
-      `;
-      
-      if (!memos || memos.length === 0) {
-        return `No semantically similar memos found for "${query}".`;
-      }
-      
-      // Rearrange results to match the order of similarity from vector search
-      const orderedResults: Memo[] = [];
-      for (const memoId of memoIds) {
-        const memo = memos.find(m => m.id === memoId);
-        if (memo) {
-          orderedResults.push(memo);
-        }
-      }
-      
-      return orderedResults;
-    } catch (error: any) {
-      console.error("Error in semantic search:", error);
-      return `Error searching for semantically similar memos: ${error.message || error}`;
-    }
-  },
-});
-
-// semanticSearchMemos is declared below
+// semanticSearchMemos is imported from semantic-search.ts above
+// We don't need to declare it again here
 
 /**
  * Export all memo-related tools
+ * Note: semanticSearchMemos is imported from semantic-search.ts
  */
 export const memoTools = {
   createMemo,
@@ -814,5 +759,5 @@ export const memoTools = {
   listMemos,
   queryMemos,
   findBacklinks,
-  semanticSearchMemos,
+  semanticSearchMemos, // This is imported from semantic-search.ts
 };

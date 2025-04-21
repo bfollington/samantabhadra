@@ -139,16 +139,29 @@ export class Chat extends AIChatAgent<Env, State> {
   /**
    * Search for similar vectors in Vectorize
    */
-  async searchSimilarVectors(queryVector: number[], limit: number = 5): Promise<any> {
+  async searchSimilarVectors(queryVector: number[], limit: number = 5, threshold: number = 0): Promise<any> {
     try {
       if (!this.env.VECTORIZE) {
         throw new Error('Vectorize service not available');
       }
       
-      return await this.env.VECTORIZE.query(queryVector, {
+      console.log(`Searching for similar vectors with limit: ${limit}`);
+      const results = await this.env.VECTORIZE.query(queryVector, {
         topK: limit,
-        returnMetadata: true
+        returnMetadata: true,
+        // Only apply threshold if it's greater than 0
+        ...(threshold > 0 ? { threshold } : {})
       });
+      
+      console.log(`Found ${results?.matches?.length || 0} vector matches`);
+      if (results?.matches?.length > 0) {
+        console.log(`First match score: ${results.matches[0].score}`);
+        if (results.matches[0].metadata) {
+          console.log(`First match metadata: ${JSON.stringify(results.matches[0].metadata)}`);
+        }
+      }
+      
+      return results;
     } catch (error) {
       console.error('Error searching similar vectors:', error);
       throw error;
