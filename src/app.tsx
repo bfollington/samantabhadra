@@ -368,7 +368,11 @@ export default function Chat() {
                                               return (
                                                 <p>
                                                   <BacklinkRenderer
-                                                    text={String(children)}
+                                                    text={Array.isArray(children) 
+                                                      ? children.map(child => typeof child === 'string' ? child : 
+                                                         (child && child.props && child.props.children) 
+                                                           ? child.props.children : '').join('') 
+                                                      : String(children)}
                                                     onNavigateToMemo={(slug) => {
                                                       // Navigate to the memos panel and select the memo with the given slug
                                                       setShowMemos(true);
@@ -384,7 +388,11 @@ export default function Chat() {
                                             text: ({ children }) => {
                                               return (
                                                 <BacklinkRenderer
-                                                  text={String(children)}
+                                                  text={Array.isArray(children) 
+                                                    ? children.map(child => typeof child === 'string' ? child : 
+                                                       (child && child.props && child.props.children) 
+                                                         ? child.props.children : '').join('') 
+                                                    : String(children)}
                                                   onNavigateToMemo={(slug) => {
                                                     // Navigate to the memos panel and select the memo with the given slug
                                                     setShowMemos(true);

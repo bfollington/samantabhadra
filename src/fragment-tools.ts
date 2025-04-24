@@ -132,29 +132,31 @@ const createFragment = tool({
     const nowIso = new Date().toISOString();
     const tsIso = ts ?? nowIso;
 
-    let vector_id: string | null = null;
-    try {
-      const embeddings = await agent.createEmbeddings(content);
-      vector_id = `fragment-${id}`;
-      await agent.storeVectorEmbedding(vector_id, embeddings, { fragment_id: id, slug });
-    } catch (e) {
-      console.error("Error generating/storing embeddings for fragment", e);
-    }
+    // Insert fragment *without* vector_id for now
+    // @ts-ignore
+    await agent.sql`
+      INSERT INTO fragments (id, slug, content, speaker, ts, convo_id, metadata, created, modified)
+      VALUES (${id}, ${slug}, ${content}, ${speaker}, ${tsIso}, ${convo_id}, ${metadata}, ${nowIso}, ${nowIso})
+    `;
 
-    // Insert fragment
-    if (vector_id) {
-      // @ts-ignore  (sql tagged template validation not available)
-      await agent.sql`
-        INSERT INTO fragments (id, slug, content, speaker, ts, convo_id, metadata, vector_id, created, modified)
-        VALUES (${id}, ${slug}, ${content}, ${speaker}, ${tsIso}, ${convo_id}, ${metadata}, ${vector_id}, ${nowIso}, ${nowIso})
-      `;
-    } else {
-      // @ts-ignore
-      await agent.sql`
-        INSERT INTO fragments (id, slug, content, speaker, ts, convo_id, metadata, created, modified)
-        VALUES (${id}, ${slug}, ${content}, ${speaker}, ${tsIso}, ${convo_id}, ${metadata}, ${nowIso}, ${nowIso})
-      `;
-    }
+    // Kick off embeddings + upsert in the background so we don't block the response
+    agent.ctx?.waitUntil(
+      (async () => {
+        try {
+          const embeddings = await agent.createEmbeddings(content);
+          const vector_id = `fragment-${id}`;
+          await agent.storeVectorEmbedding(vector_id, embeddings, { fragment_id: id, slug });
+
+          // Update the fragment row with the vector_id once done
+          // @ts-ignore
+          await agent.sql`
+            UPDATE fragments SET vector_id = ${vector_id} WHERE id = ${id}
+          `;
+        } catch (err) {
+          console.error("[BG] embedding/upsert failed for fragment", err);
+        }
+      })()
+    );
 
     return `Fragment created with id ${id} and slug '${slug}'.`;
   },

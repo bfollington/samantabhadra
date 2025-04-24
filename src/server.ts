@@ -68,8 +68,12 @@ export class Chat extends AIChatAgent<Env, State> {
   // Holds slugs of fragments auto-created during the current turn so we can
   // inform the language model via the system prompt.
   private autoFragmentSlugs: string[] = [];
-  // inform the language model via the system prompt.
-  private autoFragmentSlugs: string[] = [];
+
+  /**
+   * When we compute semantically related fragments in the background we store
+   * them here and inject them into the *next* turn's system prompt.
+   */
+
 
   /**
    * Opportunistically create a fragment from the most recent user message if
@@ -298,10 +302,22 @@ export class Chat extends AIChatAgent<Env, State> {
             executions,
           });
 
-          // Stream the AI response using GPT-4
+          // --- build semantic context synchronously -------------
+          const lastUser = [...this.messages].reverse().find((m) => m.role === "user");
+          const relatedFragBlock =
+            lastUser && typeof lastUser.content === "string"
+              ? await this.buildContextFromFragments(lastUser.content)
+              : "";
+
+          const systemPrompt =
+            relatedFragBlock
+              ? SYSTEM_PROMPT +
+                `\n\n---- Related fragments ----\n${relatedFragBlock}\n--------------------------------\n`
+              : SYSTEM_PROMPT;
+
           const result = streamText({
             model,
-            system: SYSTEM_PROMPT,
+            system: systemPrompt,
             messages: processedMessages,
             tools,
             onFinish,
@@ -331,6 +347,36 @@ export class Chat extends AIChatAgent<Env, State> {
     ]);
   }
 
+  /** Build a snippet of up to 3 semantically-related fragments */
+  private async buildContextFromFragments(text: string): Promise<string> {
+    try {
+      const embed = await this.createEmbeddings(text);
+      const search = await this.searchSimilarVectors(embed, 3, 0.75);
+      const ids = (search.matches ?? [])
+        .map((m: any) => m.metadata?.fragment_id)
+        .filter(Boolean);
+      if (!ids.length) return "";
+
+      const rows: { slug: string; content: string }[] = [];
+      for (const fid of ids) {
+        const res = await this.sql`
+          SELECT slug, content FROM fragments WHERE id = ${fid} LIMIT 1`;
+        if (res[0]) rows.push(res[0]);
+      }
+
+      return rows
+        .map(
+          (r: any, i: number) =>
+            `#${i + 1} [[${r.slug}]] – ${r.content.slice(0, 160)}…`
+        )
+        .join("\n");
+    } catch (err) {
+      console.warn("context-fragment lookup failed", err);
+      return "";
+    }
+  }
+
+
   /**
    * Handles API requests for memos
    */
@@ -344,9 +390,28 @@ export class Chat extends AIChatAgent<Env, State> {
     if (url.pathname.endsWith("list-fragments") && request.method === "GET") {
       try {
         const limit = Number(url.searchParams.get("limit") || "50");
-        agentContext.enterWith(this);
-        const results = await fragmentTools.listFragments.execute({ limit });
-        return Response.json(results);
+
+        // Ensure fragments table exists (no-op if it already does)
+        await this.sql`
+          CREATE TABLE IF NOT EXISTS fragments (
+            id        TEXT PRIMARY KEY,
+            slug      TEXT UNIQUE NOT NULL,
+            content   TEXT NOT NULL,
+            speaker   TEXT,
+            ts        TEXT NOT NULL,
+            convo_id  TEXT,
+            metadata  TEXT NOT NULL,
+            created   TEXT NOT NULL,
+            modified  TEXT NOT NULL
+          );`;
+
+        const rows = await this.sql`
+          SELECT id, slug, content, speaker, created, modified
+          FROM fragments
+          ORDER BY modified DESC
+          LIMIT ${limit};`;
+
+        return Response.json(rows);
       } catch (err) {
         console.error("Error listing fragments", err);
         return new Response("Error listing fragments", { status: 500 });
