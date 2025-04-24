@@ -274,8 +274,62 @@ const semanticSearchFragments = tool({
     await initFragmentTables();
 
     const queryEmbedding = await agent.createEmbeddings(query);
-    const results = await agent.searchSimilarVectors(queryEmbedding, top_k, threshold);
-    return results;
+    const vectorResults = await agent.searchSimilarVectors(queryEmbedding, top_k, threshold);
+    
+    // If no matches found, return the empty results
+    if (!vectorResults?.matches?.length) {
+      return vectorResults;
+    }
+    
+    // Extract fragment IDs from the vector results
+    const fragmentIds = vectorResults.matches
+      .map((match: any) => match.metadata?.fragment_id)
+      .filter(Boolean);
+    
+    if (!fragmentIds.length) {
+      return vectorResults;
+    }
+    
+    // Fetch the actual fragment content
+    const fragmentContents: Record<string, Fragment> = {};
+    for (const fragmentId of fragmentIds) {
+      const fragments = await agent.sql<Fragment>`
+        SELECT * FROM fragments 
+        WHERE id = ${fragmentId} 
+        LIMIT 1`;
+      
+      if (fragments.length > 0) {
+        fragmentContents[fragmentId] = fragments[0];
+      }
+    }
+    
+    // Enhance the vector results with fragment content
+    const enhancedMatches = vectorResults.matches.map((match: any) => {
+      const fragmentId = match.metadata?.fragment_id;
+      const fragment = fragmentContents[fragmentId];
+      
+      if (fragment) {
+        return {
+          ...match,
+          fragment: {
+            id: fragment.id,
+            slug: fragment.slug,
+            content: fragment.content,
+            speaker: fragment.speaker,
+            ts: fragment.ts,
+            created: fragment.created,
+            modified: fragment.modified
+          }
+        };
+      }
+      
+      return match;
+    });
+    
+    return {
+      ...vectorResults,
+      matches: enhancedMatches
+    };
   },
 });
 

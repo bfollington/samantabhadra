@@ -304,16 +304,26 @@ export class Chat extends AIChatAgent<Env, State> {
 
           // --- build semantic context synchronously -------------
           const lastUser = [...this.messages].reverse().find((m) => m.role === "user");
-          const relatedFragBlock =
-            lastUser && typeof lastUser.content === "string"
-              ? await this.buildContextFromFragments(lastUser.content)
-              : "";
+          
+          let contextBlocks = "";
+          
+          if (lastUser && typeof lastUser.content === "string") {
+            // Fetch related fragments
+            const relatedFragBlock = await this.buildContextFromFragments(lastUser.content);
+            if (relatedFragBlock) {
+              contextBlocks += `\n\n---- Related fragments ----\n${relatedFragBlock}\n--------------------------------\n`;
+            }
+            
+            // Fetch related memos
+            const relatedMemosBlock = await this.buildContextFromMemos(lastUser.content);
+            if (relatedMemosBlock) {
+              contextBlocks += `\n\n---- Related memos ----\n${relatedMemosBlock}\n--------------------------------\n`;
+            }
+          }
 
-          const systemPrompt =
-            relatedFragBlock
-              ? SYSTEM_PROMPT +
-                `\n\n---- Related fragments ----\n${relatedFragBlock}\n--------------------------------\n`
-              : SYSTEM_PROMPT;
+          const systemPrompt = contextBlocks
+            ? SYSTEM_PROMPT + contextBlocks
+            : SYSTEM_PROMPT;
 
           const result = streamText({
             model,
@@ -347,7 +357,7 @@ export class Chat extends AIChatAgent<Env, State> {
     ]);
   }
 
-  /** Build a snippet of up to 3 semantically-related fragments */
+  /** Build context from up to 3 semantically-related fragments */
   private async buildContextFromFragments(text: string): Promise<string> {
     try {
       const embed = await this.createEmbeddings(text);
@@ -367,11 +377,40 @@ export class Chat extends AIChatAgent<Env, State> {
       return rows
         .map(
           (r: any, i: number) =>
-            `#${i + 1} [[${r.slug}]] – ${r.content.slice(0, 160)}…`
+            `#${i + 1} [[${r.slug}]]\n${r.content}`
         )
-        .join("\n");
+        .join("\n\n");
     } catch (err) {
       console.warn("context-fragment lookup failed", err);
+      return "";
+    }
+  }
+
+  /** Build context from up to 3 semantically-related memos */
+  private async buildContextFromMemos(text: string): Promise<string> {
+    try {
+      const embed = await this.createEmbeddings(text);
+      const search = await this.searchSimilarVectors(embed, 3, 0.75);
+      const ids = (search.matches ?? [])
+        .map((m: any) => m.metadata?.memo_id)
+        .filter(Boolean);
+      if (!ids.length) return "";
+
+      const rows: { title: string; content: string }[] = [];
+      for (const memoId of ids) {
+        const res = await this.sql`
+          SELECT title, content FROM memos WHERE id = ${memoId} LIMIT 1`;
+        if (res[0]) rows.push(res[0]);
+      }
+
+      return rows
+        .map(
+          (r: any, i: number) =>
+            `#${i + 1} [[${r.title}]]\n${r.content}`
+        )
+        .join("\n\n");
+    } catch (err) {
+      console.warn("context-memo lookup failed", err);
       return "";
     }
   }

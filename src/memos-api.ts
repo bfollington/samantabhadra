@@ -557,7 +557,10 @@ export async function searchMemosByVector(agent: Chat, request: Request): Promis
     const vectorResults = await agent.searchSimilarVectors(embeddings, limit);
     
     if (!vectorResults || !vectorResults.matches || vectorResults.matches.length === 0) {
-      return Response.json([], {
+      return Response.json({
+        count: 0,
+        matches: []
+      }, {
         headers: {
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*',
@@ -572,7 +575,10 @@ export async function searchMemosByVector(agent: Chat, request: Request): Promis
       .map((match: any) => match.metadata && typeof match.metadata === 'object' && 'memo_id' in match.metadata ? match.metadata.memo_id : '');
 
     if (memoIds.length === 0) {
-      return Response.json([], {
+      return Response.json({
+        count: 0,
+        matches: []
+      }, {
         headers: {
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*',
@@ -584,22 +590,45 @@ export async function searchMemosByVector(agent: Chat, request: Request): Promis
     // Fetch the actual memos
     // Convert the array to a PostgreSQL-compatible format for IN clause
     const memoIdsStr = memoIds.map((id: string) => `'${id}'`).join(',');
-    const query_result = await agent.sql`
+    const memos = await agent.sql`
       SELECT * FROM memos
       WHERE id IN (${memoIdsStr})
-      ORDER BY modified DESC
     `;
-
-    // Rearrange results to match the order of similarity from vector search
-    const orderedResults = [];
-    for (const memoId of memoIds) {
-      const memo = query_result.find(m => m.id === memoId);
+    
+    // Create a map of memo id to memo object for quick lookup
+    const memoMap: Record<string, any> = {};
+    memos.forEach((memo: any) => {
+      memoMap[memo.id] = memo;
+    });
+    
+    // Enhance vector results with memo content
+    const enhancedMatches = vectorResults.matches.map((match: any) => {
+      const memoId = match.metadata?.memo_id;
+      const memo = memoMap[memoId];
+      
       if (memo) {
-        orderedResults.push(memo);
+        return {
+          ...match,
+          memo: {
+            id: memo.id, 
+            title: memo.title,
+            content: memo.content,
+            created: memo.created,
+            modified: memo.modified,
+            is_pinned: memo.is_pinned,
+            visibility: memo.visibility
+          }
+        };
       }
-    }
-
-    return Response.json(orderedResults, {
+      
+      return match;
+    });
+    
+    // Return the enhanced results
+    return Response.json({
+      count: enhancedMatches.length,
+      matches: enhancedMatches
+    }, {
       headers: {
         'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*',
