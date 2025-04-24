@@ -15,6 +15,7 @@ import { Avatar } from "@/components/avatar/Avatar";
 import { Toggle } from "@/components/toggle/Toggle";
 import { Tooltip } from "@/components/tooltip/Tooltip";
 import { MemosPanel } from "@/components/memos/MemosPanel";
+import { FragmentsPanel } from "@/components/fragments/FragmentsPanel";
 
 // Icon imports
 import {
@@ -25,6 +26,7 @@ import {
   Sun,
   Trash,
   Note,
+  Files,
 } from "@phosphor-icons/react";
 import { useRealtimeSession } from "./hooks/useRealtimeSession";
 
@@ -41,6 +43,7 @@ export default function Chat() {
   });
   const [showDebug, setShowDebug] = useState(false);
   const [showMemos, setShowMemos] = useState(false);
+  const [showFragments, setShowFragments] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback(() => {
@@ -157,15 +160,36 @@ export default function Chat() {
             />
           </div>
 
+          {/* Memos panel toggle */}
           <Button
             variant="ghost"
             size="md"
             shape="square"
             className="rounded-full h-9 w-9"
-            onClick={() => setShowMemos((prev) => !prev)}
+            onClick={() => {
+              setShowMemos((prev) => !prev);
+              // ensure fragments panel is closed
+              setShowFragments(false);
+            }}
             aria-label="Toggle memos panel"
           >
             <Note size={20} />
+          </Button>
+
+          {/* Fragments panel toggle */}
+          <Button
+            variant="ghost"
+            size="md"
+            shape="square"
+            className="rounded-full h-9 w-9"
+            onClick={() => {
+              setShowFragments((prev) => !prev);
+              // ensure memos panel is closed
+              setShowMemos(false);
+            }}
+            aria-label="Toggle fragments panel"
+          >
+            <Files size={20} />
           </Button>
 
           <Button
@@ -189,9 +213,11 @@ export default function Chat() {
           </Button>
         </div>
 
-        {/* Either show Memos Panel or Messages */}
+        {/* Either show Memos / Fragments Panel or Messages */}
         {showMemos ? (
           <MemosPanel onClose={() => setShowMemos(false)} />
+        ) : showFragments ? (
+          <FragmentsPanel onClose={() => setShowFragments(false)} />
         ) : (
           <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-24 max-h-[calc(100vh-10rem)]">
             {agentMessages.length === 0 && (

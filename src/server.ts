@@ -13,6 +13,7 @@ import {
 import { openai } from "@ai-sdk/openai";
 import { processToolCalls } from "./utils";
 import { tools, executions } from "./tools";
+import { fragmentTools } from "./fragment-tools";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type {
   Tool,
@@ -21,6 +22,7 @@ import type {
 } from "@modelcontextprotocol/sdk/types.js";
 import { handleMemosApi } from './memos-api';
 import type { Ai, Vectorize } from "@cloudflare/workers-types/experimental";
+import { SYSTEM_PROMPT } from "./prompt";
 // import { env } from "cloudflare:workers";
 
 const model = openai("gpt-4.1-2025-04-14");
@@ -57,13 +59,82 @@ export const agentContext = new AsyncLocalStorage<Chat>();
  * Chat Agent implementation that handles real-time AI chat interactions
  */
 export class Chat extends AIChatAgent<Env, State> {
+  /**
+   * Track which user messages have already been turned into fragments so we
+   * don\'t create duplicates every render.
+   */
+  private processedUserMessageIds = new Set<string>();
+
+  // Holds slugs of fragments auto-created during the current turn so we can
+  // inform the language model via the system prompt.
+  private autoFragmentSlugs: string[] = [];
+  // inform the language model via the system prompt.
+  private autoFragmentSlugs: string[] = [];
+
+  /**
+   * Opportunistically create a fragment from the most recent user message if
+   * we haven\'t done so yet and the content is long enough to be meaningful.
+   */
+  async maybeCreateFragment() {
+    // Grab the latest user message
+    const lastMsg = [...this.messages].reverse().find((m) => m.role === "user");
+    if (!lastMsg) return;
+
+    if (this.processedUserMessageIds.has(lastMsg.id)) {
+      return; // already handled
+    }
+
+    // Simple heuristic: skip if the message is very short
+    if (typeof lastMsg.content !== "string" || lastMsg.content.trim().length < 20) {
+      return;
+    }
+
+    // Generate a slug from first few words
+    function slugify(text: string) {
+      return text
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, "")
+        .trim()
+        .split(/\s+/)
+        .slice(0, 6)
+        .join("-");
+    }
+
+    let baseSlug = slugify(lastMsg.content);
+    if (!baseSlug) {
+      baseSlug = `fragment-${crypto.randomUUID().slice(0, 8)}`;
+    }
+
+    // Call the fragment creation tool via its execute function
+    try {
+      // Actually create the fragment in storage / Vectorize
+      const resultMsg = await fragmentTools.createFragment.execute({
+        slug: baseSlug,
+        content: lastMsg.content as string,
+        speaker: "user",
+        ts: new Date().toISOString(),
+        metadata: JSON.stringify({ auto: true }),
+      });
+
+      this.processedUserMessageIds.add(lastMsg.id);
+      console.log(`Auto-created fragment '${baseSlug}' from latest user message.`);
+
+      // Record the slug so we can tell the model in the system prompt for
+      // this turn. We don't add any synthetic messages, keeping the timeline
+      // clean so the model can generate a full reply.
+      this.autoFragmentSlugs.push(baseSlug);
+    } catch (err) {
+      // Suppress errors (e.g., duplicate slug) to avoid interrupting the chat flow
+      console.warn("maybeCreateFragment failed", err);
+    }
+  }
   initialState = {
     servers: {},
     tools: [],
     prompts: [],
     resources: [],
   };
-  
+
   /**
    * Creates embeddings for text using the AI service
    */
@@ -72,23 +143,23 @@ export class Chat extends AIChatAgent<Env, State> {
       if (!this.env.AI) {
         throw new Error('AI service not available');
       }
-      
+
       const response = await this.env.AI.run(
         '@cf/baai/bge-base-en-v1.5',
         { text }
       );
-      
+
       if (response?.data?.[0]) {
         return response.data[0];
       }
-      
+
       throw new Error('Failed to generate embeddings');
     } catch (error) {
       console.error('Error creating embeddings:', error);
       throw error;
     }
   }
-  
+
   /**
    * Store vector embeddings in Vectorize
    */
@@ -97,14 +168,14 @@ export class Chat extends AIChatAgent<Env, State> {
       if (!this.env.VECTORIZE) {
         throw new Error('Vectorize service not available');
       }
-      
+
       await this.env.VECTORIZE.upsert([{ id, values, metadata }]);
     } catch (error) {
       console.error('Error storing vector embedding:', error);
       throw error;
     }
   }
-  
+
   /**
    * Delete vector embeddings from Vectorize
    */
@@ -113,7 +184,7 @@ export class Chat extends AIChatAgent<Env, State> {
       if (!this.env.VECTORIZE) {
         throw new Error('Vectorize service not available');
       }
-      
+
       // For Cloudflare Vectorize, we'll need to use the available API
       // Since the exact API varies, we'll try different approaches
       try {
@@ -135,7 +206,7 @@ export class Chat extends AIChatAgent<Env, State> {
       // Don't throw the error, as this is a non-critical operation
     }
   }
-  
+
   /**
    * Search for similar vectors in Vectorize
    */
@@ -144,7 +215,7 @@ export class Chat extends AIChatAgent<Env, State> {
       if (!this.env.VECTORIZE) {
         throw new Error('Vectorize service not available');
       }
-      
+
       console.log(`Searching for similar vectors with limit: ${limit}`);
       const results = await this.env.VECTORIZE.query(queryVector, {
         topK: limit,
@@ -152,7 +223,7 @@ export class Chat extends AIChatAgent<Env, State> {
         // Only apply threshold if it's greater than 0
         ...(threshold > 0 ? { threshold } : {})
       });
-      
+
       console.log(`Found ${results?.matches?.length || 0} vector matches`);
       if (results?.matches?.length > 0) {
         console.log(`First match score: ${results.matches[0].score}`);
@@ -160,7 +231,7 @@ export class Chat extends AIChatAgent<Env, State> {
           console.log(`First match metadata: ${JSON.stringify(results.matches[0].metadata)}`);
         }
       }
-      
+
       return results;
     } catch (error) {
       console.error('Error searching similar vectors:', error);
@@ -217,6 +288,9 @@ export class Chat extends AIChatAgent<Env, State> {
         execute: async (dataStream) => {
           // Process any pending tool calls from previous messages
           // This handles human-in-the-loop confirmations for tools
+          // Proactively (but not incessantly) create a fragment from the last user message
+          await this.maybeCreateFragment();
+
           const processedMessages = await processToolCalls({
             messages: this.messages,
             dataStream,
@@ -227,36 +301,7 @@ export class Chat extends AIChatAgent<Env, State> {
           // Stream the AI response using GPT-4
           const result = streamText({
             model,
-            system: `You are a helpful assistant that can do various tasks...
-
-You can also manage memos for the user. Memos are notes with a unique slug, content, headers (as JSON), and links (as JSON).
-
-## Notebook with Backlinks
-
-The notebook feature uses a special [[backlink]] syntax for referencing other memos. When you write [[slug]] in your message or in a memo, it creates a clickable link to the memo with that slug.
-
-Examples:
-- If you mention [[todo]] in a message, it will become a clickable link to the "todo" memo
-- You can reference multiple memos like [[meeting-notes]] and [[project-ideas]] in the same message
-- Backlinks create a network of connected notes that users can navigate through
-
-You are encouraged to use this [[backlink]] syntax in your responses when referring to existing memos. When referencing memos in your messages, always use the [[slug]] format to create clickable links.
-
-You can create, edit, search, delete, and list memos using the memo tools. You can also find all memos that link to a specific memo using the findBacklinks tool.
-
-## Workflows
-
-Workflows are special memos that contain instructions for completing specific tasks or processes. They can be created, listed, and executed using the workflow tools.
-
-As an assistant, you can:
-- List available workflows with listWorkflows
-- Execute a workflow with executeWorkflow
-- Save the current conversation as a workflow with saveWorkflow
-
-When saving a workflow, abstract the general pattern of the conversation without the specific details or answers given.
-
-Workflows are powerful for automating repetitive tasks and creating reusable processes. When executing a workflow, carefully follow the instructions and use appropriate tools to accomplish each step.
-`,
+            system: SYSTEM_PROMPT,
             messages: processedMessages,
             tools,
             onFinish,
@@ -289,13 +334,40 @@ Workflows are powerful for automating repetitive tasks and creating reusable pro
   /**
    * Handles API requests for memos
    */
+  /**
+   * Handles API requests for fragments (read-only for now)
+   */
+  async handleFragmentsApi(request: Request): Promise<Response | null> {
+    const url = new URL(request.url);
+
+    // GET /agents/chat/<id>/list-fragments?limit=50
+    if (url.pathname.endsWith("list-fragments") && request.method === "GET") {
+      try {
+        const limit = Number(url.searchParams.get("limit") || "50");
+        agentContext.enterWith(this);
+        const results = await fragmentTools.listFragments.execute({ limit });
+        return Response.json(results);
+      } catch (err) {
+        console.error("Error listing fragments", err);
+        return new Response("Error listing fragments", { status: 500 });
+      }
+    }
+    return null;
+  }
+
   async handleMemosApi(request: Request): Promise<Response | null> {
     // Import the memos API handlers
     return handleMemosApi(this, request);
   }
 
   async onRequest(request: Request): Promise<Response> {
-    // First check if this is a memos API request
+    // First check if this is a fragments API request
+    const fragmentsApiResponse = await this.handleFragmentsApi(request);
+    if (fragmentsApiResponse) {
+      return fragmentsApiResponse;
+    }
+
+    // Next check if this is a memos API request
     const memosApiResponse = await this.handleMemosApi(request);
     if (memosApiResponse) {
       return memosApiResponse;

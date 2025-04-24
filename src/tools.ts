@@ -17,6 +17,9 @@ import { memoTools } from "./memo-tools";
 // Import the workflow tools
 import { workflowTools } from "./workflow-tools";
 
+// Import the fragment tools
+import { fragmentTools } from "./fragment-tools";
+
 /**
  * Weather information tool that requires human confirmation
  * When invoked, this will present a confirmation dialog to the user
@@ -188,6 +191,8 @@ export const tools = {
   ...memoTools,
   // Add workflow management tools
   ...workflowTools,
+  // Add fragment management tools
+  ...fragmentTools,
 };
 
 /**
