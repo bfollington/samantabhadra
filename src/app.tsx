@@ -16,6 +16,7 @@ import { Toggle } from "@/components/toggle/Toggle";
 import { Tooltip } from "@/components/tooltip/Tooltip";
 import { MemosPanel } from "@/components/memos/MemosPanel";
 import { FragmentsPanel } from "@/components/fragments/FragmentsPanel";
+import { FragmentViewer } from "@/components/fragments/FragmentViewer";
 
 // Icon imports
 import {
@@ -44,6 +45,7 @@ export default function Chat() {
   const [showDebug, setShowDebug] = useState(false);
   const [showMemos, setShowMemos] = useState(false);
   const [showFragments, setShowFragments] = useState(false);
+  const [viewingFragment, setViewingFragment] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback(() => {
@@ -67,7 +69,23 @@ export default function Chat() {
   // Scroll to bottom on mount
   useEffect(() => {
     scrollToBottom();
+
+    // Check if a fragment should be opened
+    const fragmentSlug = sessionStorage.getItem('openFragmentSlug');
+    if (fragmentSlug) {
+      setViewingFragment(fragmentSlug);
+      // Clear it after use
+      sessionStorage.removeItem('openFragmentSlug');
+    }
   }, [scrollToBottom]);
+
+  const handleNavigateToFragment = (slug: string) => {
+    setViewingFragment(slug);
+  };
+
+  const handleCloseFragmentViewer = () => {
+    setViewingFragment(null);
+  };
 
   const toggleTheme = () => {
     const newTheme = theme === "dark" ? "light" : "dark";
@@ -213,6 +231,15 @@ export default function Chat() {
           </Button>
         </div>
 
+        {/* Fragment Viewer */}
+        {viewingFragment && (
+          <FragmentViewer
+            slug={viewingFragment}
+            onClose={handleCloseFragmentViewer}
+            onNavigateToFragment={handleNavigateToFragment}
+          />
+        )}
+
         {/* Either show Memos / Fragments Panel or Messages */}
         {showMemos ? (
           <MemosPanel onClose={() => setShowMemos(false)} />
@@ -323,8 +350,10 @@ export default function Chat() {
                                                 key={`backlink-${lineIndex}-${i}`}
                                                 className="text-[#F48120] hover:underline font-medium"
                                                 onClick={() => {
+                                                  // Try both memo and fragment panels
                                                   setShowMemos(true);
                                                   sessionStorage.setItem('openMemoSlug', match.slug);
+                                                  sessionStorage.setItem('openFragmentSlug', match.slug);
                                                 }}
                                               >
                                                 {match.slug}
@@ -350,8 +379,10 @@ export default function Chat() {
                                               <button
                                                 className="text-[#F48120] hover:underline font-medium"
                                                 onClick={() => {
+                                                  // Try both memo and fragment routes for backward compatibility
                                                   setShowMemos(true);
                                                   sessionStorage.setItem('openMemoSlug', slug);
+                                                  sessionStorage.setItem('openFragmentSlug', slug);
                                                 }}
                                               >
                                                 {slug}
@@ -376,9 +407,10 @@ export default function Chat() {
                                                     onNavigateToMemo={(slug) => {
                                                       // Navigate to the memos panel and select the memo with the given slug
                                                       setShowMemos(true);
-                                                      // Find the memo in the list and select it
-                                                      // Will be handled after the panel is shown
+                                                      // Set the memo slug to open
                                                       sessionStorage.setItem('openMemoSlug', slug);
+                                                      // Also store the fragment slug in case it's a fragment link
+                                                      sessionStorage.setItem('openFragmentSlug', slug);
                                                     }}
                                                   />
                                                 </p>

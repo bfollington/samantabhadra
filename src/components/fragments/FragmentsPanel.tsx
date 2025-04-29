@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Card } from "@/components/card/Card";
 import { Button } from "@/components/button/Button";
 import { ArrowClockwise, X } from "@phosphor-icons/react";
+import { FragmentViewer } from "./FragmentViewer";
 
 interface Fragment {
   id: string;
@@ -21,6 +22,7 @@ export function FragmentsPanel({ onClose }: Props) {
   const [fragments, setFragments] = useState<Fragment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [viewingFragment, setViewingFragment] = useState<string | null>(null);
 
   const fetchFragments = async () => {
     try {
@@ -38,7 +40,33 @@ export function FragmentsPanel({ onClose }: Props) {
 
   useEffect(() => {
     fetchFragments();
+
+    // Check if there's a fragment to open from sessionStorage
+    const storedFragmentSlug = sessionStorage.getItem("openFragmentSlug");
+    if (storedFragmentSlug) {
+      setViewingFragment(storedFragmentSlug);
+      // Clear it so it doesn't reopen on every mount
+      sessionStorage.removeItem("openFragmentSlug");
+    }
   }, []);
+
+  const handleViewFragment = (slug: string) => {
+    setViewingFragment(slug);
+  };
+
+  const handleCloseFragmentViewer = () => {
+    setViewingFragment(null);
+  };
+
+  if (viewingFragment) {
+    return (
+      <FragmentViewer 
+        slug={viewingFragment} 
+        onClose={handleCloseFragmentViewer}
+        onNavigateToFragment={handleViewFragment}
+      />
+    );
+  }
 
   if (loading) {
     return (
@@ -81,7 +109,14 @@ export function FragmentsPanel({ onClose }: Props) {
           <tbody>
             {fragments.map((f) => (
               <tr key={f.id} className="border-t border-neutral-200 dark:border-neutral-800">
-                <td className="px-3 py-2 whitespace-nowrap text-[#F48120] font-medium">{f.slug}</td>
+                <td className="px-3 py-2 whitespace-nowrap">
+                  <button 
+                    onClick={() => handleViewFragment(f.slug)}
+                    className="text-[#F48120] hover:underline font-medium"
+                  >
+                    {f.slug}
+                  </button>
+                </td>
                 <td className="px-3 py-2 whitespace-nowrap">{f.speaker ?? "-"}</td>
                 <td className="px-3 py-2 max-w-[400px] truncate">{f.content}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{new Date(f.created).toLocaleString()}</td>

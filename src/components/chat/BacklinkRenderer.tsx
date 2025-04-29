@@ -7,6 +7,8 @@ interface BacklinkRendererProps {
 
 /**
  * Component that renders text with [[backlinks]] as clickable links
+ * Supports both memos and fragments - it attempts to open a memo first,
+ * and if that fails, tries to open a fragment with the same slug.
  */
 export function BacklinkRenderer({ text, onNavigateToMemo }: BacklinkRendererProps) {
   const [elements, setElements] = useState<React.ReactNode[]>([]);
@@ -39,7 +41,14 @@ export function BacklinkRenderer({ text, onNavigateToMemo }: BacklinkRendererPro
         <button 
           key={`${slug}-${match.index}`}
           className="text-[#F48120] hover:underline font-medium"
-          onClick={() => onNavigateToMemo(slug)}
+          onClick={() => {
+            // When a backlink is clicked, we'll try to open both a memo and a fragment
+            // The UI will show the first one that exists
+            onNavigateToMemo(slug);
+            
+            // Also store the slug as a potential fragment to open
+            sessionStorage.setItem('openFragmentSlug', slug);
+          }}
         >
           {slug}
         </button>

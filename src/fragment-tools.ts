@@ -163,6 +163,83 @@ const createFragment = tool({
 });
 
 /**
+ * Get a single fragment by slug.
+ */
+const getFragment = tool({
+  description: "Fetch one fragment by slug",
+  parameters: z.object({
+    slug: z.string().describe("URL-friendly identifier of the fragment")
+  }),
+  execute: async ({ slug }) => {
+    const agent = agentContext.getStore();
+    if (!agent) {
+      throw new Error("No agent found");
+    }
+    await initFragmentTables();
+    
+    const frags = await agent.sql<Fragment>`
+      SELECT * FROM fragments WHERE slug = ${slug} LIMIT 1
+    `;
+    
+    if (!frags.length) {
+      return `No fragment found with slug '${slug}'.`;
+    }
+    
+    return frags[0];
+  },
+});
+
+/**
+ * Get links to/from a fragment.
+ */
+const getFragmentLinks = tool({
+  description: "List links (incoming/outgoing) of a fragment by slug",
+  parameters: z.object({
+    slug: z.string().describe("URL-friendly identifier of the fragment")
+  }),
+  execute: async ({ slug }) => {
+    const agent = agentContext.getStore();
+    if (!agent) {
+      throw new Error("No agent found");
+    }
+    await initFragmentTables();
+    
+    // First verify the fragment exists
+    const frags = await agent.sql<Fragment>`
+      SELECT id FROM fragments WHERE slug = ${slug} LIMIT 1
+    `;
+    
+    if (!frags.length) {
+      return `No fragment found with slug '${slug}'.`;
+    }
+    
+    const fragment_id = frags[0].id;
+    
+    // Get outgoing links
+    const outgoing = await agent.sql`
+      SELECT fe.rel, fe.to_id, f2.slug AS to_slug
+      FROM fragment_edges fe
+      JOIN fragments f2 ON fe.to_id = f2.id
+      WHERE fe.from_id = ${fragment_id}
+    `;
+    
+    // Get incoming links
+    const incoming = await agent.sql`
+      SELECT fe.rel, fe.from_id, f2.slug AS from_slug
+      FROM fragment_edges fe
+      JOIN fragments f2 ON fe.from_id = f2.id
+      WHERE fe.to_id = ${fragment_id}
+    `;
+    
+    return {
+      fragment_slug: slug,
+      outgoing: outgoing,
+      incoming: incoming
+    };
+  },
+});
+
+/**
  * Create a directed relationship between two fragments.
  */
 const linkFragments = tool({
@@ -342,4 +419,6 @@ export const fragmentTools = {
   listFragments,
   searchFragments,
   semanticSearchFragments,
+  getFragment,
+  getFragmentLinks,
 };

@@ -456,6 +456,87 @@ export class Chat extends AIChatAgent<Env, State> {
         return new Response("Error listing fragments", { status: 500 });
       }
     }
+    
+    // GET /agents/chat/<id>/fragment?slug=<slug>
+    if (url.pathname.endsWith("fragment") && request.method === "GET") {
+      try {
+        const slug = url.searchParams.get("slug");
+        if (!slug) {
+          return new Response("Missing slug parameter", { status: 400 });
+        }
+
+        // Ensure tables exist
+        await this.sql`
+          CREATE TABLE IF NOT EXISTS fragments (
+            id        TEXT PRIMARY KEY,
+            slug      TEXT UNIQUE NOT NULL,
+            content   TEXT NOT NULL,
+            speaker   TEXT,
+            ts        TEXT NOT NULL,
+            convo_id  TEXT,
+            metadata  TEXT NOT NULL,
+            created   TEXT NOT NULL,
+            modified  TEXT NOT NULL
+          );`;
+
+        await this.sql`
+          CREATE TABLE IF NOT EXISTS fragment_edges (
+            id       TEXT PRIMARY KEY,
+            from_id  TEXT NOT NULL,
+            to_id    TEXT NOT NULL,
+            rel      TEXT NOT NULL,
+            weight   REAL,
+            metadata TEXT NOT NULL,
+            created  TEXT NOT NULL
+          );`;
+
+        // 1. Get the main fragment
+        const frag = await this.sql`
+          SELECT * FROM fragments WHERE slug = ${slug} LIMIT 1`;
+
+        if (!frag.length) {
+          return new Response("Fragment not found", { status: 404 });
+        }
+
+        // 2. Get outgoing links
+        const outgoing = await this.sql`
+          SELECT fe.rel, fe.to_id, f2.slug AS to_slug
+          FROM fragment_edges fe
+          JOIN fragments f2 ON fe.to_id = f2.id
+          WHERE fe.from_id = ${frag[0].id}`;
+
+        // 3. Get incoming links
+        const incoming = await this.sql`
+          SELECT fe.rel, fe.from_id, f2.slug AS from_slug
+          FROM fragment_edges fe
+          JOIN fragments f2 ON fe.from_id = f2.id
+          WHERE fe.to_id = ${frag[0].id}`;
+
+        return Response.json({ fragment: frag[0], outgoing, incoming });
+      } catch (err) {
+        console.error("Error fetching fragment", err);
+        return new Response("Error fetching fragment", { status: 500 });
+      }
+    }
+    
+    // GET /agents/chat/<id>/fragment-exists?slug=<slug>
+    if (url.pathname.endsWith("fragment-exists") && request.method === "GET") {
+      try {
+        const slug = url.searchParams.get("slug");
+        if (!slug) {
+          return new Response("Missing slug parameter", { status: 400 });
+        }
+
+        const result = await this.sql`
+          SELECT COUNT(*) as count FROM fragments WHERE slug = ${slug} LIMIT 1`;
+        
+        return Response.json({ exists: result[0]?.count > 0 });
+      } catch (err) {
+        console.error("Error checking fragment existence", err);
+        return new Response("Error checking fragment existence", { status: 500 });
+      }
+    }
+    
     return null;
   }
 
