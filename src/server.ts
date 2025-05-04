@@ -464,7 +464,7 @@ export class Chat extends AIChatAgent<Env, State> {
           const likeParam = "%" + q + "%";
           totalRes = await this.sql`
             SELECT COUNT(*) AS count FROM fragments f
-            WHERE f.slug ILIKE ${likeParam} OR f.content ILIKE ${likeParam};`;
+            WHERE lower(f.slug) LIKE lower(${likeParam}) OR lower(f.content) LIKE lower(${likeParam});`;
 
           rowsRes = await this.sql`
             SELECT
@@ -479,7 +479,7 @@ export class Chat extends AIChatAgent<Env, State> {
                 WHERE fe.from_id = f.id OR fe.to_id = f.id
               ) AS link_count
             FROM fragments f
-            WHERE f.slug ILIKE ${likeParam} OR f.content ILIKE ${likeParam}
+            WHERE lower(f.slug) LIKE lower(${likeParam}) OR lower(f.content) LIKE lower(${likeParam})
             ORDER BY f.modified DESC
             LIMIT ${limit} OFFSET ${offset};`;
         } else {
