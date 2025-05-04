@@ -425,12 +425,14 @@ export class Chat extends AIChatAgent<Env, State> {
   async handleFragmentsApi(request: Request): Promise<Response | null> {
     const url = new URL(request.url);
 
-    // GET /agents/chat/<id>/list-fragments?limit=50
+    // GET /agents/chat/<id>/list-fragments?limit=50&offset=0&q=foo
     if (url.pathname.endsWith("list-fragments") && request.method === "GET") {
       try {
-        const limit = Number(url.searchParams.get("limit") || "50");
+        const limit  = Number(url.searchParams.get("limit")  || "50");
+        const offset = Number(url.searchParams.get("offset") || "0");
+        const q      = (url.searchParams.get("q") || "").trim();
 
-        // Ensure fragments table exists (no-op if it already does)
+        // Ensure fragments & edges tables exist (no-op if they already do)
         await this.sql`
           CREATE TABLE IF NOT EXISTS fragments (
             id        TEXT PRIMARY KEY,
@@ -444,16 +446,130 @@ export class Chat extends AIChatAgent<Env, State> {
             modified  TEXT NOT NULL
           );`;
 
-        const rows = await this.sql`
-          SELECT id, slug, content, speaker, created, modified
-          FROM fragments
-          ORDER BY modified DESC
-          LIMIT ${limit};`;
+        await this.sql`
+          CREATE TABLE IF NOT EXISTS fragment_edges (
+            id       TEXT PRIMARY KEY,
+            from_id  TEXT NOT NULL,
+            to_id    TEXT NOT NULL,
+            rel      TEXT NOT NULL,
+            weight   REAL,
+            metadata TEXT NOT NULL,
+            created  TEXT NOT NULL
+          );`;
 
-        return Response.json(rows);
+        // ------ Build queries --------------
+        let totalRes;
+        let rowsRes;
+        if (q) {
+          const likeParam = "%" + q + "%";
+          totalRes = await this.sql`
+            SELECT COUNT(*) AS count FROM fragments f
+            WHERE f.slug ILIKE ${likeParam} OR f.content ILIKE ${likeParam};`;
+
+          rowsRes = await this.sql`
+            SELECT
+              f.id,
+              f.slug,
+              f.content,
+              f.speaker,
+              f.created,
+              f.modified,
+              (
+                SELECT COUNT(*) FROM fragment_edges fe
+                WHERE fe.from_id = f.id OR fe.to_id = f.id
+              ) AS link_count
+            FROM fragments f
+            WHERE f.slug ILIKE ${likeParam} OR f.content ILIKE ${likeParam}
+            ORDER BY f.modified DESC
+            LIMIT ${limit} OFFSET ${offset};`;
+        } else {
+          totalRes = await this.sql`SELECT COUNT(*) AS count FROM fragments;`;
+
+          rowsRes = await this.sql`
+            SELECT
+              f.id,
+              f.slug,
+              f.content,
+              f.speaker,
+              f.created,
+              f.modified,
+              (
+                SELECT COUNT(*) FROM fragment_edges fe
+                WHERE fe.from_id = f.id OR fe.to_id = f.id
+              ) AS link_count
+            FROM fragments f
+            ORDER BY f.modified DESC
+            LIMIT ${limit} OFFSET ${offset};`;
+        }
+
+        const total = totalRes[0].count as number;
+        const rows = rowsRes;
+
+        return Response.json({ total, items: rows });
       } catch (err) {
         console.error("Error listing fragments", err);
         return new Response("Error listing fragments", { status: 500 });
+      }
+    }
+
+    // GET /agents/chat/<id>/fragment-graph?limit=1000
+    if (url.pathname.endsWith("fragment-graph") && request.method === "GET") {
+      try {
+        const limit = Number(url.searchParams.get("limit") || "1000");
+
+        // ensure tables
+        await this.sql`
+          CREATE TABLE IF NOT EXISTS fragments (
+            id        TEXT PRIMARY KEY,
+            slug      TEXT UNIQUE NOT NULL,
+            content   TEXT NOT NULL,
+            speaker   TEXT,
+            ts        TEXT NOT NULL,
+            convo_id  TEXT,
+            metadata  TEXT NOT NULL,
+            created   TEXT NOT NULL,
+            modified  TEXT NOT NULL
+          );`;
+
+        await this.sql`
+          CREATE TABLE IF NOT EXISTS fragment_edges (
+            id       TEXT PRIMARY KEY,
+            from_id  TEXT NOT NULL,
+            to_id    TEXT NOT NULL,
+            rel      TEXT NOT NULL,
+            weight   REAL,
+            metadata TEXT NOT NULL,
+            created  TEXT NOT NULL
+          );`;
+
+        // Nodes – most connected first (limit)
+        const nodes = await this.sql`
+          SELECT
+            f.id,
+            f.slug,
+            (
+              SELECT COUNT(*) FROM fragment_edges fe
+              WHERE fe.from_id = f.id OR fe.to_id = f.id
+            ) AS link_count
+          FROM fragments f
+          ORDER BY link_count DESC
+          LIMIT ${limit};`;
+
+        // Links – all edges between any two fragments
+        const links = await this.sql`
+          SELECT
+            f1.slug AS source,
+            f2.slug AS target,
+            fe.rel  AS type,
+            COALESCE(fe.weight, 1) AS weight
+          FROM fragment_edges fe
+          JOIN fragments f1 ON fe.from_id = f1.id
+          JOIN fragments f2 ON fe.to_id = f2.id;`;
+
+        return Response.json({ nodes, links });
+      } catch (err) {
+        console.error("Error building fragment graph", err);
+        return new Response("Error building fragment graph", { status: 500 });
       }
     }
     
