@@ -166,7 +166,7 @@ export default function Chat() {
           </div>
 
           <div className="flex-1">
-            <h2 className="font-semibold text-base">AI Chat Agent</h2>
+            <h2 className="font-semibold text-base">Samantabhadra</h2>
           </div>
 
           <div className="flex items-center gap-2 mr-2">
@@ -399,10 +399,10 @@ export default function Chat() {
                                               return (
                                                 <p>
                                                   <BacklinkRenderer
-                                                    text={Array.isArray(children) 
-                                                      ? children.map(child => typeof child === 'string' ? child : 
-                                                         (child && child.props && child.props.children) 
-                                                           ? child.props.children : '').join('') 
+                                                    text={Array.isArray(children)
+                                                      ? children.map(child => typeof child === 'string' ? child :
+                                                        (child && child.props && child.props.children)
+                                                          ? child.props.children : '').join('')
                                                       : String(children)}
                                                     onNavigateToMemo={(slug) => {
                                                       // Navigate to the memos panel and select the memo with the given slug
@@ -420,10 +420,10 @@ export default function Chat() {
                                             text: ({ children }) => {
                                               return (
                                                 <BacklinkRenderer
-                                                  text={Array.isArray(children) 
-                                                    ? children.map(child => typeof child === 'string' ? child : 
-                                                       (child && child.props && child.props.children) 
-                                                         ? child.props.children : '').join('') 
+                                                  text={Array.isArray(children)
+                                                    ? children.map(child => typeof child === 'string' ? child :
+                                                      (child && child.props && child.props.children)
+                                                        ? child.props.children : '').join('')
                                                     : String(children)}
                                                   onNavigateToMemo={(slug) => {
                                                     // Navigate to the memos panel and select the memo with the given slug
