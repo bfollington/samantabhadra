@@ -42,6 +42,13 @@ export default function Chat() {
     const savedTheme = localStorage.getItem("theme");
     return (savedTheme as "dark" | "light") || "dark";
   });
+  // Model constants
+  const OPENAI_MODEL_NAME = "gpt-4.1-2025-04-14";
+  const ANTHROPIC_MODEL_NAME = "claude-3-7-sonnet";
+  const [currentModel, setCurrentModel] = useState<typeof OPENAI_MODEL_NAME | typeof ANTHROPIC_MODEL_NAME>(OPENAI_MODEL_NAME);
+  const [hasAnthropicKey, setHasAnthropicKey] = useState(false);
+  const [modelSwitchLoading, setModelSwitchLoading] = useState(false);
+  const [modelSwitchError, setModelSwitchError] = useState<string | null>(null);
   const [showDebug, setShowDebug] = useState(false);
   const [showMemos, setShowMemos] = useState(false);
   const [showFragments, setShowFragments] = useState(false);
@@ -91,6 +98,63 @@ export default function Chat() {
     const newTheme = theme === "dark" ? "light" : "dark";
     setTheme(newTheme);
   };
+
+  const handleModelChange = async (modelName: typeof OPENAI_MODEL_NAME | typeof ANTHROPIC_MODEL_NAME) => {
+    setModelSwitchLoading(true);
+    setModelSwitchError(null);
+    
+    try {
+      const response = await fetch("/agents/chat/default/set-model", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ modelName }),
+      });
+      
+      const result = await response.json();
+      
+      if (response.ok && result.success) {
+        setCurrentModel(modelName);
+      } else {
+        const errorMessage = result.error || "Failed to change model";
+        setModelSwitchError(errorMessage);
+        console.error("Failed to change model:", errorMessage);
+      }
+    } catch (error) {
+      setModelSwitchError("Network error when changing model");
+      console.error("Error changing model:", error);
+    } finally {
+      setModelSwitchLoading(false);
+    }
+  };
+
+  // Fetch current model and check for Anthropic API key on load
+  useEffect(() => {
+    const fetchModelAndKeyStatus = async () => {
+      try {
+        // Fetch current model
+        const modelResponse = await fetch("/agents/chat/default/get-model");
+        if (modelResponse.ok) {
+          const data = await modelResponse.json();
+          if (data.currentModel) {
+            setCurrentModel(data.currentModel);
+          }
+        }
+        
+        // Check if Anthropic API key is configured
+        const keyResponse = await fetch("/agents/chat/default/check-anthropic-key");
+        if (keyResponse.ok) {
+          const data = await keyResponse.json();
+          setHasAnthropicKey(data.success);
+        }
+      } catch (error) {
+        console.error("Error fetching model or key status:", error);
+      }
+    };
+    
+    fetchModelAndKeyStatus();
+  }, []);
 
   const agent = useAgent({
     agent: "chat",
@@ -193,6 +257,36 @@ export default function Chat() {
           >
             <Note size={20} />
           </Button>
+
+          {/* Model selector */}
+          <div className="relative ml-2">
+            <Tooltip content={
+              modelSwitchError ? modelSwitchError :
+              !hasAnthropicKey && currentModel === OPENAI_MODEL_NAME ? "Anthropic API key not configured" : 
+              "Switch model"
+            }>
+              <div className={!hasAnthropicKey && currentModel === OPENAI_MODEL_NAME ? "opacity-50 cursor-not-allowed" : ""}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    if ((currentModel === ANTHROPIC_MODEL_NAME || hasAnthropicKey) && !modelSwitchLoading) {
+                      handleModelChange(currentModel === OPENAI_MODEL_NAME ? ANTHROPIC_MODEL_NAME : OPENAI_MODEL_NAME);
+                    }
+                  }}
+                  className={`flex items-center gap-1 px-2 py-1 text-xs ${modelSwitchError ? "text-red-500" : ""}`}
+                  disabled={((!hasAnthropicKey && currentModel === OPENAI_MODEL_NAME) || modelSwitchLoading)}
+                >
+                  {modelSwitchLoading ? (
+                    <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />
+                  ) : (
+                    <Robot size={16} />
+                  )}
+                  <span>{currentModel === OPENAI_MODEL_NAME ? "GPT-4" : "Claude"}</span>
+                </Button>
+              </div>
+            </Tooltip>
+          </div>
 
           {/* Fragments panel toggle */}
           <Button
@@ -634,23 +728,20 @@ function HasOpenAIKey() {
             <div className="flex items-start gap-3">
               <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-full">
                 <svg
-                  className="w-5 h-5 text-red-600 dark:text-red-400"
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
+                  className="w-6 h-6 text-red-600 dark:text-red-400"
                   fill="none"
+                  viewBox="0 0 24 24"
                   stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-labelledby="warningIcon"
                 >
-                  <title id="warningIcon">Warning Icon</title>
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="12" y1="8" x2="12" y2="12" />
-                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
                 </svg>
               </div>
-              <div className="flex-1">
+              <div>
                 <h3 className="text-lg font-semibold text-red-600 dark:text-red-400 mb-2">
                   OpenAI API Key Not Configured
                 </h3>
@@ -673,6 +764,11 @@ function HasOpenAIKey() {
                     OPENAI_API_KEY
                   </code>
                   . <br />
+                  To use Anthropic models, also configure an{" "}
+                  <code className="bg-red-100 dark:bg-red-900/30 px-1.5 py-0.5 rounded text-red-600 dark:text-red-400 font-mono text-sm">
+                    ANTHROPIC_API_KEY
+                  </code>
+                  . <br />
                   You can also use a different model provider by following these{" "}
                   <a
                     href="https://github.com/cloudflare/agents-starter?tab=readme-ov-file#use-a-different-ai-model-provider"
@@ -680,8 +776,9 @@ function HasOpenAIKey() {
                     rel="noopener noreferrer"
                     className="text-red-600 dark:text-red-400"
                   >
-                    instructions.
+                    instructions
                   </a>
+                  .
                 </p>
               </div>
             </div>
@@ -690,5 +787,6 @@ function HasOpenAIKey() {
       </div>
     );
   }
+
   return null;
 }

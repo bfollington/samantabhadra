@@ -11,6 +11,7 @@ import {
   type StreamTextOnFinishCallback,
 } from "ai";
 import { openai } from "@ai-sdk/openai";
+import { anthropic } from "@ai-sdk/anthropic";
 import { processToolCalls } from "./utils";
 import { tools, executions } from "./tools";
 import { fragmentTools } from "./fragment-tools";
@@ -25,7 +26,26 @@ import type { Ai, Vectorize } from "@cloudflare/workers-types/experimental";
 import { SYSTEM_PROMPT } from "./prompt";
 // import { env } from "cloudflare:workers";
 
-const model = openai("gpt-4.1-2025-04-14");
+// Models configuration
+const OPENAI_MODEL_NAME = "gpt-4.1-2025-04-14";
+const ANTHROPIC_MODEL_NAME = "claude-sonnet-4-20250514";
+
+const openaiModel = openai(OPENAI_MODEL_NAME);
+const anthropicModel = anthropic(ANTHROPIC_MODEL_NAME);
+
+// Default to OpenAI model
+let currentModel = openaiModel;
+
+// Function to set the current model
+function setCurrentModel(modelName: string) {
+  if (modelName === ANTHROPIC_MODEL_NAME) {
+    currentModel = anthropicModel;
+  } else {
+    currentModel = openaiModel;
+  }
+  return currentModel;
+}
+
 // Cloudflare AI Gateway
 // const openai = createOpenAI({
 //   apiKey: env.OPENAI_API_KEY,
@@ -36,6 +56,7 @@ type Env = {
   Chat: AgentNamespace<Chat>;
   HOST: string;
   OPENAI_API_KEY: string;
+  ANTHROPIC_API_KEY: string;
   VECTORIZE: Vectorize;
   AI: Ai;
 };
@@ -51,6 +72,7 @@ export type State = {
   tools: (Tool & { serverId: string })[];
   prompts: (Prompt & { serverId: string })[];
   resources: (Resource & { serverId: string })[];
+  currentModelName: string;
 };
 
 // we use ALS to expose the agent context to the tools
@@ -137,6 +159,7 @@ export class Chat extends AIChatAgent<Env, State> {
     tools: [],
     prompts: [],
     resources: [],
+    currentModelName: OPENAI_MODEL_NAME,
   };
 
   /**
@@ -304,16 +327,16 @@ export class Chat extends AIChatAgent<Env, State> {
 
           // --- build semantic context synchronously -------------
           const lastUser = [...this.messages].reverse().find((m) => m.role === "user");
-          
+
           let contextBlocks = "";
-          
+
           if (lastUser && typeof lastUser.content === "string") {
             // Fetch related fragments
             const relatedFragBlock = await this.buildContextFromFragments(lastUser.content);
             if (relatedFragBlock) {
               contextBlocks += `\n\n---- Related fragments ----\n${relatedFragBlock}\n--------------------------------\n`;
             }
-            
+
             // Fetch related memos
             const relatedMemosBlock = await this.buildContextFromMemos(lastUser.content);
             if (relatedMemosBlock) {
@@ -325,8 +348,11 @@ export class Chat extends AIChatAgent<Env, State> {
             ? SYSTEM_PROMPT + contextBlocks
             : SYSTEM_PROMPT;
 
+          // Set the current model based on state
+          const modelToUse = setCurrentModel(this.state.currentModelName || OPENAI_MODEL_NAME);
+
           const result = streamText({
-            model,
+            model: modelToUse,
             system: systemPrompt,
             messages: processedMessages,
             tools,
@@ -428,9 +454,9 @@ export class Chat extends AIChatAgent<Env, State> {
     // GET /agents/chat/<id>/list-fragments?limit=50&offset=0&q=foo
     if (url.pathname.endsWith("list-fragments") && request.method === "GET") {
       try {
-        const limit  = Number(url.searchParams.get("limit")  || "50");
+        const limit = Number(url.searchParams.get("limit") || "50");
         const offset = Number(url.searchParams.get("offset") || "0");
-        const q      = (url.searchParams.get("q") || "").trim();
+        const q = (url.searchParams.get("q") || "").trim();
 
         // Ensure fragments & edges tables exist (no-op if they already do)
         await this.sql`
@@ -572,7 +598,7 @@ export class Chat extends AIChatAgent<Env, State> {
         return new Response("Error building fragment graph", { status: 500 });
       }
     }
-    
+
     // GET /agents/chat/<id>/fragment?slug=<slug>
     if (url.pathname.endsWith("fragment") && request.method === "GET") {
       try {
@@ -634,7 +660,7 @@ export class Chat extends AIChatAgent<Env, State> {
         return new Response("Error fetching fragment", { status: 500 });
       }
     }
-    
+
     // GET /agents/chat/<id>/fragment-exists?slug=<slug>
     if (url.pathname.endsWith("fragment-exists") && request.method === "GET") {
       try {
@@ -645,14 +671,14 @@ export class Chat extends AIChatAgent<Env, State> {
 
         const result = await this.sql`
           SELECT COUNT(*) as count FROM fragments WHERE slug = ${slug} LIMIT 1`;
-        
+
         return Response.json({ exists: result[0]?.count > 0 });
       } catch (err) {
         console.error("Error checking fragment existence", err);
         return new Response("Error checking fragment existence", { status: 500 });
       }
     }
-    
+
     return null;
   }
 
@@ -662,6 +688,90 @@ export class Chat extends AIChatAgent<Env, State> {
   }
 
   async onRequest(request: Request): Promise<Response> {
+    // Extract URL for all endpoint checks
+    const url = new URL(request.url);
+
+    // Check if Anthropic API key is configured
+    if (url.pathname.endsWith("/check-anthropic-key") && request.method === "GET") {
+      return new Response(JSON.stringify({
+        success: !!this.env.ANTHROPIC_API_KEY
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+
+    if (url.pathname.endsWith("/set-model") && request.method === "POST") {
+      try {
+        const { modelName } = await request.json();
+
+        // Validate model name
+        if (modelName !== OPENAI_MODEL_NAME && modelName !== ANTHROPIC_MODEL_NAME) {
+          return new Response(JSON.stringify({
+            success: false,
+            error: `Invalid model name. Supported models: ${OPENAI_MODEL_NAME}, ${ANTHROPIC_MODEL_NAME}`
+          }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" }
+          });
+        }
+
+        // Check if the appropriate API key is configured
+        if (modelName === ANTHROPIC_MODEL_NAME && !this.env.ANTHROPIC_API_KEY) {
+          return new Response(JSON.stringify({
+            success: false,
+            error: "Anthropic API key is not configured. Please set the ANTHROPIC_API_KEY environment variable."
+          }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" }
+          });
+        }
+
+        if (modelName === OPENAI_MODEL_NAME && !this.env.OPENAI_API_KEY) {
+          return new Response(JSON.stringify({
+            success: false,
+            error: "OpenAI API key is not configured. Please set the OPENAI_API_KEY environment variable."
+          }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" }
+          });
+        }
+
+        // Update the state with the new model name
+        this.setState({
+          ...this.state,
+          currentModelName: modelName
+        });
+
+        return new Response(JSON.stringify({
+          success: true,
+          currentModel: modelName
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+      } catch (err) {
+        console.error("Error setting model:", err);
+        return new Response(JSON.stringify({
+          success: false,
+          error: "Failed to set model"
+        }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+    }
+
+    // Check if this is a get-model request
+    if (url.pathname.endsWith("/get-model") && request.method === "GET") {
+      return new Response(JSON.stringify({
+        currentModel: this.state.currentModelName
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+
     // First check if this is a fragments API request
     const fragmentsApiResponse = await this.handleFragmentsApi(request);
     if (fragmentsApiResponse) {
