@@ -44,7 +44,7 @@ export default function Chat() {
   });
   // Model constants
   const OPENAI_MODEL_NAME = "gpt-4.1-2025-04-14";
-  const ANTHROPIC_MODEL_NAME = "claude-3-7-sonnet";
+  const ANTHROPIC_MODEL_NAME = "claude-sonnet-4-20250514";
   const [currentModel, setCurrentModel] = useState<typeof OPENAI_MODEL_NAME | typeof ANTHROPIC_MODEL_NAME>(OPENAI_MODEL_NAME);
   const [hasAnthropicKey, setHasAnthropicKey] = useState(false);
   const [modelSwitchLoading, setModelSwitchLoading] = useState(false);
@@ -102,7 +102,7 @@ export default function Chat() {
   const handleModelChange = async (modelName: typeof OPENAI_MODEL_NAME | typeof ANTHROPIC_MODEL_NAME) => {
     setModelSwitchLoading(true);
     setModelSwitchError(null);
-    
+
     try {
       const response = await fetch("/agents/chat/default/set-model", {
         method: "POST",
@@ -111,9 +111,9 @@ export default function Chat() {
         },
         body: JSON.stringify({ modelName }),
       });
-      
+
       const result = await response.json();
-      
+
       if (response.ok && result.success) {
         setCurrentModel(modelName);
       } else {
@@ -141,7 +141,7 @@ export default function Chat() {
             setCurrentModel(data.currentModel);
           }
         }
-        
+
         // Check if Anthropic API key is configured
         const keyResponse = await fetch("/agents/chat/default/check-anthropic-key");
         if (keyResponse.ok) {
@@ -152,7 +152,7 @@ export default function Chat() {
         console.error("Error fetching model or key status:", error);
       }
     };
-    
+
     fetchModelAndKeyStatus();
   }, []);
 
@@ -262,8 +262,8 @@ export default function Chat() {
           <div className="relative ml-2">
             <Tooltip content={
               modelSwitchError ? modelSwitchError :
-              !hasAnthropicKey && currentModel === OPENAI_MODEL_NAME ? "Anthropic API key not configured" : 
-              "Switch model"
+                !hasAnthropicKey && currentModel === OPENAI_MODEL_NAME ? "Anthropic API key not configured" :
+                  "Switch model"
             }>
               <div className={!hasAnthropicKey && currentModel === OPENAI_MODEL_NAME ? "opacity-50 cursor-not-allowed" : ""}>
                 <Button
