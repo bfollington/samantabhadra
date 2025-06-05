@@ -1,7 +1,7 @@
 {
-  "name": "cloudflare-agent-starter",
-  "version": "1.0.0",
-  "description": "",
+  "name": "samantabhadra",
+  "version": "0.1.0",
+  "description": "A conversational knowledge graph assistant that builds an interconnected web of ideas from your discussions",
   "type": "module",
   "private": true,
   "scripts": {
@@ -15,9 +15,14 @@
   "keywords": [
     "cloudflare",
     "ai",
-    "agents"
+    "agents",
+    "knowledge-graph",
+    "chat",
+    "embeddings",
+    "semantic-search",
+    "durable-objects"
   ],
-  "author": "",
+  "author": "bfollington",
   "license": "MIT",
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

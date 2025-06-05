@@ -1,241 +1,139 @@
-# 🤖 Chat Agent Starter Kit
+# 🧘 Samantabhadra - Conversational Knowledge Graph Assistant
 
-![agents-header](https://github.com/user-attachments/assets/f6d99eeb-1803-4495-9c5e-3cf07a37b402)
+A chat-notebook application that builds a growing knowledge graph from your conversations, creating an interconnected web of ideas that resurfaces contextually during discussions.
 
-<a href="https://deploy.workers.cloudflare.com/?url=https://github.com/cloudflare/agents-starter"><img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare"/></a>
+_The idea is to just chat, sometimes ask to store and search for fragments in plain language and see what resurfaces later_.
 
-A starter template for building AI-powered chat agents using Cloudflare's Agent platform, powered by [`agents`](https://www.npmjs.com/package/agents). This project provides a foundation for creating interactive chat experiences with AI, complete with a modern UI and tool integration capabilities.
+## What is Samantabhadra?
 
-## Features
+Samantabhadra is an AI-powered conversational assistant that:
+- **Captures knowledge fragments** ("toks") from conversations as atomic units of information
+- **Creates semantic connections** between related concepts using directed, labeled relationships
+- **Builds a personal knowledge graph** that grows with every conversation
+- **Resurfaces relevant context** using vector embeddings and semantic search
+- **Maintains higher-level memos** for broader notes and insights
+- **Enables workflow automation** by saving and replaying conversation patterns
 
-- 💬 Interactive chat interface with AI
-- 🛠️ Built-in tool system with human-in-the-loop confirmation
-- 📅 Advanced task scheduling (one-time, delayed, and recurring via cron)
-- 🌓 Dark/Light theme support
-- ⚡️ Real-time streaming responses
-- 🔄 State management and chat history
-- 🎨 Modern, responsive UI
+Think of it as a chat interface that remembers everything and builds an evolving map of your discussions, making connections you might have missed.
 
-## Prerequisites
+## Key Features
 
-- Cloudflare account
-- OpenAI API key
+### 🧩 Fragments (Toks)
+- Atomic snippets of knowledge extracted from conversations
+- Each fragment has a unique slug, content, speaker, timestamp, and metadata
+- Fragments can be linked with semantic relationships (e.g., "example_of", "abstracts", "generalizes_to")
+- Full-text and semantic similarity search capabilities
+- Automatic vector embedding generation for semantic search
 
-## Quick Start
+### 📝 Memos
+- Higher-level notes that can reference multiple fragments
+- Support for backlinks using `[[slug]]` syntax
+- Headers for metadata (title, description, type)
+- Bidirectional link tracking
+- Vector embeddings for semantic search
 
-1. Create a new project:
+### 🤖 AI Agent
+- Powered by OpenAI GPT-4o or Anthropic Claude models
+- Streaming responses with real-time updates
+- Tool system with human-in-the-loop confirmation for sensitive operations
+- Automatic context building from relevant fragments and memos
+- System prompt optimized for knowledge graph construction
 
-```bash
-npm create cloudflare@latest -- --template cloudflare/agents-starter
+### 🔧 Workflow System (Ben: this is defunct)
+- Save conversation patterns as reusable workflows
+- Execute workflows with parameters
+- List and manage saved workflows
+- Useful for repetitive tasks or complex procedures
+
+### 🔍 Search & Discovery
+- Full-text search across fragments and memos
+- Semantic similarity search using vector embeddings
+- Graph visualization for exploring connections
+- API endpoints for programmatic access
+
+### 🌐 REST API
+The application exposes several REST API endpoints:
+- `/list-fragments` - List all fragments with pagination
+- `/fragment?slug=...` - Get a specific fragment by slug
+- `/fragment-graph` - Get the entire fragment graph structure
+- `/fragment-exists?slug=...` - Check if a fragment exists
+- `/list-memos` - List all memos
+- `/get-memo?slug=...` - Get a specific memo
+- `/search-memos-vector?query=...` - Semantic search for memos
+- `/create-memo`, `/edit-memo`, `/delete-memo` - Memo management
+
+## Technology Stack
+
+- **Runtime**: Cloudflare Workers with Durable Objects
+- **Database**: SQLite (via Durable Objects)
+- **Vector Database**: Cloudflare Vectorize
+- **Embeddings**: Cloudflare AI (BGE base model)
+- **LLM Providers**: OpenAI GPT-4o, Anthropic Claude
+- **Framework**: React with TypeScript
+- **UI Components**: Radix UI, Tailwind CSS
+- **Build Tools**: Vite, Wrangler
+- **Agent Framework**: Cloudflare Agents SDK with Model Context Protocol (MCP)
+
+## Environment Configuration
+
+Create a `.dev.vars` file with the following variables:
+
+```env
+# Required - At least one AI provider key
+OPENAI_API_KEY=sk-proj-...
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Optional - Cloudflare AI Gateway for rate limiting and caching
+GATEWAY_BASE_URL=https://gateway.ai.cloudflare.com/v1/...
 ```
 
-2. Install dependencies:
+## Setup & Development
 
+1. Install dependencies:
 ```bash
 npm install
 ```
 
-3. Set up your environment:
+2. Configure environment variables (see above)
 
-Create a `.dev.vars` file:
-
-```env
-OPENAI_API_KEY=your_openai_api_key
-```
-
-4. Run locally:
-
+3. Run locally:
 ```bash
 npm start
 ```
 
-5. Deploy:
-
+4. Deploy to Cloudflare:
 ```bash
 npm run deploy
 ```
 
-## Project Structure
+## Architecture Notes
 
-```
-├── src/
-│   ├── app.tsx        # Chat UI implementation
-│   ├── server.ts      # Chat agent logic
-│   ├── tools.ts       # Tool definitions
-│   ├── utils.ts       # Helper functions
-│   └── styles.css     # UI styling
-```
+This is a prototype demonstration focusing on the user experience. The codebase reflects rapid iteration and experimentation:
 
-## Customization Guide
+- **Server**: `src/server.ts` - Main Durable Object handling chat sessions, embeddings, and database operations
+- **Tools**: Various tool files (`fragment-tools.ts`, `memo-tools.ts`, `workflow-tools.ts`) define AI capabilities
+- **UI**: React components in `src/components/` provide the interface
+- **API**: REST endpoints handled directly in the Durable Object's `onRequest` method
 
-### Adding New Tools
+The application uses Cloudflare's Durable Objects for persistent state, SQLite for structured data, and Vectorize for semantic search capabilities. The architecture enables real-time collaboration and knowledge graph construction at the edge.
 
-Add new tools in `tools.ts` using the tool builder:
+## Core Concepts
 
-```typescript
-// Example of a tool that requires confirmation
-const searchDatabase = tool({
-  description: "Search the database for user records",
-  parameters: z.object({
-    query: z.string(),
-    limit: z.number().optional(),
-  }),
-  // No execute function = requires confirmation
-});
+### Backlink Syntax
+Use `[[slug]]` syntax in chat or memo content to create clickable references to other fragments or memos.
 
-// Example of an auto-executing tool
-const getCurrentTime = tool({
-  description: "Get current server time",
-  parameters: z.object({}),
-  execute: async () => new Date().toISOString(),
-});
+### Knowledge Graph Building
+1. Fragments capture atomic facts from conversations
+2. Relationships connect related fragments semantically
+3. Memos provide higher-level synthesis and notes
+4. Vector embeddings enable semantic discovery
+5. The graph grows organically through natural conversation
 
-// Scheduling tool implementation
-const scheduleTask = tool({
-  description:
-    "schedule a task to be executed at a later time. 'when' can be a date, a delay in seconds, or a cron pattern.",
-  parameters: z.object({
-    type: z.enum(["scheduled", "delayed", "cron"]),
-    when: z.union([z.number(), z.string()]),
-    payload: z.string(),
-  }),
-  execute: async ({ type, when, payload }) => {
-    // ... see the implementation in tools.ts
-  },
-});
-```
-
-To handle tool confirmations, add execution functions to the `executions` object:
-
-```typescript
-export const executions = {
-  searchDatabase: async ({
-    query,
-    limit,
-  }: {
-    query: string;
-    limit?: number;
-  }) => {
-    // Implementation for when the tool is confirmed
-    const results = await db.search(query, limit);
-    return results;
-  },
-  // Add more execution handlers for other tools that require confirmation
-};
-```
-
-Tools can be configured in two ways:
-
-1. With an `execute` function for automatic execution
-2. Without an `execute` function, requiring confirmation and using the `executions` object to handle the confirmed action
-
-### Use a different AI model provider
-
-The starting [`server.ts`](https://github.com/cloudflare/agents-starter/blob/main/src/server.ts) implementation uses the [`ai-sdk`](https://sdk.vercel.ai/docs/introduction) and the [OpenAI provider](https://sdk.vercel.ai/providers/ai-sdk-providers/openai), but you can use any AI model provider by:
-
-1. Installing an alternative AI provider for the `ai-sdk`, such as the [`workers-ai-provider`](https://sdk.vercel.ai/providers/community-providers/cloudflare-workers-ai) or [`anthropic`](https://sdk.vercel.ai/providers/ai-sdk-providers/anthropic) provider:
-2. Replacing the AI SDK with the [OpenAI SDK](https://github.com/openai/openai-node)
-3. Using the Cloudflare [Workers AI + AI Gateway](https://developers.cloudflare.com/ai-gateway/providers/workersai/#workers-binding) binding API directly
-
-For example, to use the [`workers-ai-provider`](https://sdk.vercel.ai/providers/community-providers/cloudflare-workers-ai), install the package:
-
-```sh
-npm install workers-ai-provider
-```
-
-Add an `ai` binding to `wrangler.jsonc`:
-
-```jsonc
-// rest of file
-  "ai": {
-    "binding": "AI"
-  }
-// rest of file
-```
-
-Replace the `@ai-sdk/openai` import and usage with the `workers-ai-provider`:
-
-```diff
-// server.ts
-// Change the imports
-- import { openai } from "@ai-sdk/openai";
-+ import { createWorkersAI } from 'workers-ai-provider';
-
-// Create a Workers AI instance
-+ const workersai = createWorkersAI({ binding: env.AI });
-
-// Use it when calling the streamText method (or other methods)
-// from the ai-sdk
-- const model = openai("gpt-4o-2024-11-20");
-+ const model = workersai("@cf/deepseek-ai/deepseek-r1-distill-qwen-32b")
-```
-
-Commit your changes and then run the `agents-starter` as per the rest of this README.
-
-### Modifying the UI
-
-The chat interface is built with React and can be customized in `app.tsx`:
-
-- Modify the theme colors in `styles.css`
-- Add new UI components in the chat container
-- Customize message rendering and tool confirmation dialogs
-- Add new controls to the header
-
-### Example Use Cases
-
-1. **Customer Support Agent**
-
-   - Add tools for:
-     - Ticket creation/lookup
-     - Order status checking
-     - Product recommendations
-     - FAQ database search
-
-2. **Development Assistant**
-
-   - Integrate tools for:
-     - Code linting
-     - Git operations
-     - Documentation search
-     - Dependency checking
-
-3. **Data Analysis Assistant**
-
-   - Build tools for:
-     - Database querying
-     - Data visualization
-     - Statistical analysis
-     - Report generation
-
-4. **Personal Productivity Assistant**
-
-   - Implement tools for:
-     - Task scheduling with flexible timing options
-     - One-time, delayed, and recurring task management
-     - Task tracking with reminders
-     - Email drafting
-     - Note taking
-
-5. **Scheduling Assistant**
-   - Build tools for:
-     - One-time event scheduling using specific dates
-     - Delayed task execution (e.g., "remind me in 30 minutes")
-     - Recurring tasks using cron patterns
-     - Task payload management
-     - Flexible scheduling patterns
-
-Each use case can be implemented by:
-
-1. Adding relevant tools in `tools.ts`
-2. Customizing the UI for specific interactions
-3. Extending the agent's capabilities in `server.ts`
-4. Adding any necessary external API integrations
-
-## Learn More
-
-- [`agents`](https://github.com/cloudflare/agents/blob/main/packages/agents/README.md)
-- [Cloudflare Agents Documentation](https://developers.cloudflare.com/agents/)
-- [Cloudflare Workers Documentation](https://developers.cloudflare.com/workers/)
+### Working Principles
+- Check for existing knowledge before adding duplicates
+- Use descriptive relationship verbs when linking fragments
+- Keep fragments atomic and memos comprehensive
+- Let the system surface relevant context automatically
 
 ## License
 
