@@ -40,7 +40,7 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
   const [editingContent, setEditingContent] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingMemoId, setDeletingMemoId] = useState<string | null>(null);
-  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
+
 
   // Function to refresh threads list
   const refreshThreads = async () => {
@@ -222,8 +222,10 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
 
                 console.log('Generate response status:', generateResponse.status);
 
-                // Start polling to check for response updates
-                startPolling(selectedThread.root.slug);
+                // Wait a moment then reload thread to show the response
+                setTimeout(async () => {
+                  await loadThread(selectedThread.root.slug);
+                }, 1000);
               }
             }
 
@@ -318,47 +320,7 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
     }
   };
 
-  // Function to start polling for thread updates
-  const startPolling = (threadSlug: string) => {
-    if (pollingInterval) {
-      clearInterval(pollingInterval);
-    }
 
-    const interval = setInterval(async () => {
-      try {
-        await loadThread(threadSlug);
-
-        // Check if there are any "Thinking..." placeholders left
-        if (selectedThread && !selectedThread.memos.some((memo: Memo) => memo.content === "Thinking...")) {
-          // Stop polling when no more placeholders
-          stopPolling();
-        }
-      } catch (err) {
-        console.error('Polling error:', err);
-        // Stop polling on errors to prevent infinite loop
-        stopPolling();
-      }
-    }, 2000); // Poll every 2 seconds
-
-    setPollingInterval(interval);
-  };
-
-  // Function to stop polling
-  const stopPolling = () => {
-    if (pollingInterval) {
-      clearInterval(pollingInterval);
-      setPollingInterval(null);
-    }
-  };
-
-  // Cleanup polling on unmount
-  useEffect(() => {
-    return () => {
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
-      }
-    };
-  }, [pollingInterval]);
 
   const formatTime = (dateString: string) => {
     return new Date(dateString).toLocaleString();

@@ -7,6 +7,7 @@ import { MCPClientManager } from "agents/mcp/client";
 import {
   createDataStreamResponse,
   generateId,
+  generateText,
   streamText,
   type StreamTextOnFinishCallback,
 } from "ai";
@@ -870,77 +871,68 @@ export class Chat extends AIChatAgent<Env, State> {
           return new Response("Thread not found", { status: 404 });
         }
 
-        // Build context from the thread
-        const threadContext = thread.memos.map((memo: any) =>
-          `${memo.author === 'assistant' ? 'Assistant' : 'User'}: ${memo.content}`
-        ).join('\n\n');
+        // Build thread context
+        const threadContext = thread.memos
+          .filter((memo: any) => memo.content !== "Thinking...")
+          .map((memo: any) => `${memo.author === 'assistant' ? 'Assistant' : 'User'}: ${memo.content}`)
+          .join('\n\n');
 
-        // Build context from related fragments and memos
+        // Build semantic context using existing methods
         const fragmentContext = await this.buildContextFromFragments(threadContext);
         const memoContext = await this.buildContextFromMemos(threadContext);
 
-        // Generate response using the AI model
-        const systemPrompt = `${SYSTEM_PROMPT}
+        let contextBlocks = "";
+        if (fragmentContext) {
+          contextBlocks += `\n\n---- Related fragments ----\n${fragmentContext}\n--------------------------------\n`;
+        }
+        if (memoContext) {
+          contextBlocks += `\n\n---- Related memos ----\n${memoContext}\n--------------------------------\n`;
+        }
+
+        const systemPrompt = `${SYSTEM_PROMPT}${contextBlocks}
 
 Thread context:
 ${threadContext}
 
-Related fragments:
-${fragmentContext}
-
-Related memos:
-${memoContext}
-
 Please provide a helpful response to continue this conversation thread.`;
 
+        console.log("Starting AI text generation...");
+
+        // Simple text generation - no tools
+        const result = await generateText({
+          model: currentModel,
+          prompt: systemPrompt,
+        });
+
+        console.log("AI generation completed, updating memo...");
+
+        // Update the placeholder memo
+        const response = result.text || "Sorry, I couldn't generate a response.";
+        const now = new Date().toISOString();
+
+        await this.sql`
+          UPDATE memos
+          SET content = ${response}, modified = ${now}
+          WHERE id = ${memo_id}
+        `;
+
+        console.log("Generated response updated in memo:", memo_id);
+        return Response.json({ success: true, message: "Response generated successfully", content: response });
+      } catch (error) {
+        console.error("Error generating response:", error);
+
+        // Update placeholder with error message
         try {
-          const result = await streamText({
-            model: currentModel,
-            prompt: systemPrompt,
-            tools: executions,
-            onFinish: async (result) => {
-              try {
-                // Update the placeholder memo with the generated response
-                const response = result.text || "Sorry, I couldn't generate a response.";
-                const now = new Date().toISOString();
-
-                await this.sql`
-                  UPDATE memos
-                  SET content = ${response}, modified = ${now}
-                  WHERE id = ${memo_id}
-                `;
-
-                console.log("Generated response updated in memo:", memo_id);
-              } catch (updateError) {
-                console.error("Error updating memo with generated response:", updateError);
-                // Update with error message
-                const now = new Date().toISOString();
-                await this.sql`
-                  UPDATE memos
-                  SET content = "Sorry, I encountered an error while generating a response.", modified = ${now}
-                  WHERE id = ${memo_id}
-                `;
-              }
-            }
-          });
-
-          // Return success immediately while the generation happens in background
-          return Response.json({ success: true, message: "Response generation started" });
-        } catch (aiError) {
-          console.error("Error during AI text generation:", aiError);
-
-          // Update placeholder with error message
           const now = new Date().toISOString();
           await this.sql`
             UPDATE memos
             SET content = "Sorry, I encountered an error while generating a response.", modified = ${now}
             WHERE id = ${memo_id}
           `;
-
-          return Response.json({ success: false, error: "AI generation failed" }, { status: 500 });
+        } catch (updateError) {
+          console.error("Error updating memo with error message:", updateError);
         }
-      } catch (error) {
-        console.error("Error generating response:", error);
+
         return Response.json({ success: false, error: error instanceof Error ? error.message : "Internal server error" }, { status: 500 });
       }
     }
