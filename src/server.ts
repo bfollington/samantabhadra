@@ -686,7 +686,7 @@ export class Chat extends AIChatAgent<Env, State> {
 
   /**
    * Get an entire thread starting from a memo slug
-   * Returns the root memo and all descendants in order
+   * Returns the root memo and all descendants in tree structure
    */
   async getThread(slug: string): Promise<any> {
     try {
@@ -724,41 +724,70 @@ export class Chat extends AIChatAgent<Env, State> {
       const rootMemo = currentMemo;
       console.log("Root memo found:", { id: rootMemo.id, slug: rootMemo.slug });
 
-      // Get all memos that might be in this thread
-      const allMemos = await this.sql`
-        SELECT * FROM memos
-        WHERE parent_id = ${rootMemo.id} OR id = ${rootMemo.id}
-        ORDER BY created ASC
-      `;
+      // Get ALL memos in this thread recursively
+      const allThreadMemos = [];
+      const processedIds = new Set();
+      const toProcess = [rootMemo.id];
 
-      console.log("Direct children found:", allMemos.length);
+      // Add the root memo first
+      allThreadMemos.push(rootMemo);
+      processedIds.add(rootMemo.id);
 
-      // Also get any replies to replies (second level)
-      const childIds = allMemos.filter(m => m.id !== rootMemo.id).map(m => m.id);
-      let secondLevel: any[] = [];
+      // Recursively find all descendants
+      while (toProcess.length > 0) {
+        const currentId = toProcess.shift();
+        const children = await this.sql`
+          SELECT * FROM memos WHERE parent_id = ${currentId} ORDER BY created ASC
+        `;
 
-      if (childIds.length > 0) {
-        console.log("Looking for second level replies to:", childIds.length, "children");
-        // Use a simple approach for now - get replies to each child
-        for (const childId of childIds) {
-          const replies = await this.sql`
-            SELECT * FROM memos WHERE parent_id = ${childId} ORDER BY created ASC
-          `;
-          secondLevel.push(...replies);
+        for (const child of children) {
+          if (!processedIds.has(child.id)) {
+            allThreadMemos.push(child);
+            processedIds.add(child.id);
+            toProcess.push(child.id);
+          }
         }
       }
 
-      // Combine and sort all memos by created time
-      const threadMemos = [...allMemos, ...secondLevel].sort((a, b) =>
-        new Date(a.created).getTime() - new Date(b.created).getTime()
-      );
+      console.log("All thread memos found:", allThreadMemos.length);
 
-      console.log("Total thread memos:", threadMemos.length);
+      // Build tree structure with reply counts
+      const memoMap = new Map();
+
+      // First pass: create memo objects with reply count and empty replies array
+      for (const memo of allThreadMemos) {
+        const replyCount = allThreadMemos.filter(m => m.parent_id === memo.id).length;
+        memoMap.set(memo.id, {
+          ...memo,
+          replies: [],
+          replyCount
+        });
+      }
+
+      // Second pass: build parent-child relationships
+      for (const memo of allThreadMemos) {
+        const memoWithReplies = memoMap.get(memo.id);
+        if (memo.parent_id && memoMap.has(memo.parent_id)) {
+          const parent = memoMap.get(memo.parent_id);
+          parent.replies.push(memoWithReplies);
+        }
+      }
+
+      // Get the root with full tree structure
+      const rootWithTree = memoMap.get(rootMemo.id);
+
+      // Get the focused memo with its replies
+      const focusedMemoWithReplies = memoMap.get(memoResult[0].id);
+
+      console.log("Tree structure built - root has", rootWithTree?.replies?.length || 0, "direct replies");
+      console.log("Focused memo has", focusedMemoWithReplies?.replies?.length || 0, "direct replies");
 
       return {
         root: rootMemo,
-        memos: threadMemos,
-        total: threadMemos.length
+        tree: rootWithTree, // The root with its complete tree structure
+        memos: allThreadMemos,     // Flat list for compatibility
+        total: allThreadMemos.length,
+        focusedMemo: focusedMemoWithReplies // The requested memo with its replies
       };
     } catch (error) {
       console.error("Error getting thread:", error);
