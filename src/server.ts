@@ -134,7 +134,8 @@ export class Chat extends AIChatAgent<Env, State> {
     // Call the fragment creation tool via its execute function
     try {
       // Actually create the fragment in storage / Vectorize
-      const resultMsg = await fragmentTools.createFragment.execute({
+      const { fragmentTools: fragTools } = await import("./fragment-tools");
+      const resultMsg = await fragTools.createFragment.execute({
         slug: baseSlug,
         content: lastMsg.content as string,
         speaker: "user",
@@ -422,17 +423,17 @@ export class Chat extends AIChatAgent<Env, State> {
         .filter(Boolean);
       if (!ids.length) return "";
 
-      const rows: { title: string; content: string }[] = [];
+      const rows: { slug: string; content: string }[] = [];
       for (const memoId of ids) {
         const res = await this.sql`
-          SELECT title, content FROM memos WHERE id = ${memoId} LIMIT 1`;
+          SELECT slug, content FROM memos WHERE id = ${memoId} LIMIT 1`;
         if (res[0]) rows.push(res[0]);
       }
 
       return rows
         .map(
           (r: any, i: number) =>
-            `#${i + 1} [[${r.title}]]\n${r.content}`
+            `#${i + 1} [[${r.slug}]]\n${r.content}`
         )
         .join("\n\n");
     } catch (err) {
@@ -682,6 +683,88 @@ export class Chat extends AIChatAgent<Env, State> {
     return null;
   }
 
+  /**
+   * Get an entire thread starting from a memo slug
+   * Returns the root memo and all descendants in order
+   */
+  async getThread(slug: string): Promise<any> {
+    try {
+      console.log("Getting thread for slug:", slug);
+
+      // Initialize memos table to ensure parent_id and author columns exist
+      const { initMemosTableWithAgent } = await import("./memo-tools");
+      await initMemosTableWithAgent(this);
+
+      // First, get the memo by slug
+      const memoResult = await this.sql`
+        SELECT * FROM memos WHERE slug = ${slug}
+      `;
+
+      console.log("Initial memo result:", memoResult.length);
+
+      if (!memoResult.length) {
+        return null;
+      }
+
+      let currentMemo = memoResult[0];
+      console.log("Found memo:", { id: currentMemo.id, slug: currentMemo.slug, parent_id: currentMemo.parent_id });
+
+      // Walk up to find the root of the thread
+      while (currentMemo.parent_id) {
+        console.log("Walking up to parent:", currentMemo.parent_id);
+        const parentResult = await this.sql`
+          SELECT * FROM memos WHERE id = ${currentMemo.parent_id}
+        `;
+
+        if (!parentResult.length) break;
+        currentMemo = parentResult[0];
+      }
+
+      const rootMemo = currentMemo;
+      console.log("Root memo found:", { id: rootMemo.id, slug: rootMemo.slug });
+
+      // Get all memos that might be in this thread
+      const allMemos = await this.sql`
+        SELECT * FROM memos
+        WHERE parent_id = ${rootMemo.id} OR id = ${rootMemo.id}
+        ORDER BY created ASC
+      `;
+
+      console.log("Direct children found:", allMemos.length);
+
+      // Also get any replies to replies (second level)
+      const childIds = allMemos.filter(m => m.id !== rootMemo.id).map(m => m.id);
+      let secondLevel: any[] = [];
+
+      if (childIds.length > 0) {
+        console.log("Looking for second level replies to:", childIds.length, "children");
+        // Use a simple approach for now - get replies to each child
+        for (const childId of childIds) {
+          const replies = await this.sql`
+            SELECT * FROM memos WHERE parent_id = ${childId} ORDER BY created ASC
+          `;
+          secondLevel.push(...replies);
+        }
+      }
+
+      // Combine and sort all memos by created time
+      const threadMemos = [...allMemos, ...secondLevel].sort((a, b) =>
+        new Date(a.created).getTime() - new Date(b.created).getTime()
+      );
+
+      console.log("Total thread memos:", threadMemos.length);
+
+      return {
+        root: rootMemo,
+        memos: threadMemos,
+        total: threadMemos.length
+      };
+    } catch (error) {
+      console.error("Error getting thread:", error);
+      return null;
+    }
+  }
+
   async handleMemosApi(request: Request): Promise<Response | null> {
     // Import the memos API handlers
     return handleMemosApi(this, request);
@@ -701,9 +784,170 @@ export class Chat extends AIChatAgent<Env, State> {
       });
     }
 
+    // Handle thread endpoints
+    if (url.pathname.endsWith("/thread") && request.method === "GET") {
+      const slug = url.searchParams.get("slug");
+      console.log("Thread request for slug:", slug);
+
+      if (!slug) {
+        return new Response("Missing slug parameter", { status: 400 });
+      }
+
+      const thread = await this.getThread(slug);
+      console.log("Thread result:", thread ? `Found ${thread.total} memos` : "Not found");
+
+      if (!thread) {
+        return new Response("Thread not found", { status: 404 });
+      }
+
+      return Response.json(thread);
+    }
+
+    // Handle create reply endpoint
+    if (url.pathname.endsWith("/create-reply") && request.method === "POST") {
+      try {
+        const data = await request.json() as { parent_slug: string; content: string; author?: string };
+        const { parent_slug, content, author = "user" } = data;
+
+        console.log("Create reply request:", { parent_slug, content, author });
+
+        if (!parent_slug || !content) {
+          console.log("Missing required fields:", { parent_slug: !!parent_slug, content: !!content });
+          return new Response("Missing required fields", { status: 400 });
+        }
+
+        // Initialize memos table to ensure parent_id and author columns exist
+        const { initMemosTableWithAgent, memoTools } = await import("./memo-tools");
+        await initMemosTableWithAgent(this);
+
+        // Use the createReply tool with agent context
+        const result = await agentContext.run(this, async () => {
+          return await memoTools.createReply.execute({
+            parent_slug,
+            content,
+            author
+          });
+        });
+
+        console.log("Reply created successfully:", result);
+        return Response.json({ success: true, message: result });
+      } catch (error) {
+        console.error("Error creating reply:", error);
+        return Response.json({ success: false, error: error instanceof Error ? error.message : "Internal server error" }, { status: 500 });
+      }
+    }
+
+    // Handle generate response endpoint
+    if (url.pathname.endsWith("/generate-response") && request.method === "POST") {
+      try {
+        const data = await request.json() as { memo_id: string };
+        const { memo_id } = data;
+
+        console.log("Generate response request for memo:", memo_id);
+
+        if (!memo_id) {
+          return new Response("Missing memo_id parameter", { status: 400 });
+        }
+
+        // Initialize memos table
+        const { initMemosTableWithAgent } = await import("./memo-tools");
+        await initMemosTableWithAgent(this);
+
+        // Get the placeholder memo
+        const placeholderResult = await this.sql`
+          SELECT * FROM memos WHERE id = ${memo_id}
+        `;
+
+        if (!placeholderResult.length) {
+          return new Response("Memo not found", { status: 404 });
+        }
+
+        const placeholder = placeholderResult[0];
+
+        // Get the thread context
+        const thread = await this.getThread(placeholder.slug);
+        if (!thread) {
+          return new Response("Thread not found", { status: 404 });
+        }
+
+        // Build context from the thread
+        const threadContext = thread.memos.map((memo: any) =>
+          `${memo.author === 'assistant' ? 'Assistant' : 'User'}: ${memo.content}`
+        ).join('\n\n');
+
+        // Build context from related fragments and memos
+        const fragmentContext = await this.buildContextFromFragments(threadContext);
+        const memoContext = await this.buildContextFromMemos(threadContext);
+
+        // Generate response using the AI model
+        const systemPrompt = `${SYSTEM_PROMPT}
+
+Thread context:
+${threadContext}
+
+Related fragments:
+${fragmentContext}
+
+Related memos:
+${memoContext}
+
+Please provide a helpful response to continue this conversation thread.`;
+
+        try {
+          const result = await streamText({
+            model: currentModel,
+            prompt: systemPrompt,
+            tools: executions,
+            onFinish: async (result) => {
+              try {
+                // Update the placeholder memo with the generated response
+                const response = result.text || "Sorry, I couldn't generate a response.";
+                const now = new Date().toISOString();
+
+                await this.sql`
+                  UPDATE memos
+                  SET content = ${response}, modified = ${now}
+                  WHERE id = ${memo_id}
+                `;
+
+                console.log("Generated response updated in memo:", memo_id);
+              } catch (updateError) {
+                console.error("Error updating memo with generated response:", updateError);
+                // Update with error message
+                const now = new Date().toISOString();
+                await this.sql`
+                  UPDATE memos
+                  SET content = "Sorry, I encountered an error while generating a response.", modified = ${now}
+                  WHERE id = ${memo_id}
+                `;
+              }
+            }
+          });
+
+          // Return success immediately while the generation happens in background
+          return Response.json({ success: true, message: "Response generation started" });
+        } catch (aiError) {
+          console.error("Error during AI text generation:", aiError);
+
+          // Update placeholder with error message
+          const now = new Date().toISOString();
+          await this.sql`
+            UPDATE memos
+            SET content = "Sorry, I encountered an error while generating a response.", modified = ${now}
+            WHERE id = ${memo_id}
+          `;
+
+          return Response.json({ success: false, error: "AI generation failed" }, { status: 500 });
+        }
+      } catch (error) {
+        console.error("Error generating response:", error);
+        return Response.json({ success: false, error: error instanceof Error ? error.message : "Internal server error" }, { status: 500 });
+      }
+    }
+
     if (url.pathname.endsWith("/set-model") && request.method === "POST") {
       try {
-        const { modelName } = await request.json();
+        const { modelName } = await request.json() as { modelName: string };
 
         // Validate model name
         if (modelName !== OPENAI_MODEL_NAME && modelName !== ANTHROPIC_MODEL_NAME) {
@@ -779,9 +1023,10 @@ export class Chat extends AIChatAgent<Env, State> {
     }
 
     // Next check if this is a memos API request
-    const memosApiResponse = await this.handleMemosApi(request);
-    if (memosApiResponse) {
-      return memosApiResponse;
+    // Handle memo API requests
+    const memoApiResponse = await this.handleMemosApi(request);
+    if (memoApiResponse) {
+      return memoApiResponse;
     }
 
     if (this.mcp.isCallbackRequest(request)) {

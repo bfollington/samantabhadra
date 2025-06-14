@@ -212,7 +212,6 @@ export function FragmentGraph({ onClose, onNavigateToFragment }: Props) {
           ctx.fillStyle = "#FFFFFF";
           ctx.fillText(label, textX, textY);
         }}
-        linkColor={() => "#F4812080"}
         linkCanvasObjectMode={() => "after"}
         linkCanvasObject={(link: Link, ctx, globalScale) => {
           const LABEL = link.type ?? "";

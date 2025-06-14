@@ -69,7 +69,7 @@ export async function initMemosTable(agent: Chat): Promise<boolean> {
         modified TEXT NOT NULL
       )
     `;
-    
+
     // Check if vector_id column exists, add it if it doesn't
     try {
       // First try to query using vector_id to see if it exists
@@ -81,9 +81,32 @@ export async function initMemosTable(agent: Chat): Promise<boolean> {
       await agent.sql`ALTER TABLE memos ADD COLUMN vector_id TEXT`;
     }
 
+    // Check if parent_id column exists, add it if it doesn't
+    try {
+      await agent.sql`SELECT parent_id FROM memos LIMIT 1`;
+      console.log('parent_id column already exists');
+    } catch (error) {
+      console.log('Adding parent_id column to memos table');
+      await agent.sql`ALTER TABLE memos ADD COLUMN parent_id TEXT`;
+    }
+
+    // Check if author column exists, add it if it doesn't
+    try {
+      await agent.sql`SELECT author FROM memos LIMIT 1`;
+      console.log('author column already exists');
+    } catch (error) {
+      console.log('Adding author column to memos table');
+      await agent.sql`ALTER TABLE memos ADD COLUMN author TEXT DEFAULT 'user'`;
+    }
+
     // Create an index on the slug for faster lookups
     await agent.sql`
       CREATE INDEX IF NOT EXISTS idx_memos_slug ON memos(slug)
+    `;
+
+    // Create an index on parent_id for thread lookups
+    await agent.sql`
+      CREATE INDEX IF NOT EXISTS idx_memos_parent ON memos(parent_id)
     `;
 
     return true;
@@ -266,16 +289,16 @@ export async function createMemo(agent: Chat, request: Request): Promise<Respons
 
     // Initialize with empty links structure
     const links = JSON.stringify({ incoming: [], outgoing: [] });
-    
+
     // Generate vector embeddings for the content
     let vector_id = null;
     try {
       // Create a vector ID based on the memo ID
       vector_id = `memo-${id}`;
-      
+
       // Generate embeddings using the Chat class method
       const embeddings = await agent.createEmbeddings(memoData.content);
-      
+
       // Store the vector embedding
       await agent.storeVectorEmbedding(vector_id, embeddings, {
         memo_id: id,
@@ -385,14 +408,14 @@ export async function editMemo(agent: Chat, request: Request): Promise<Response>
 
     // Get the current memo to check if it exists and get its vector_id if any
     const existingMemo = await agent.sql`SELECT * FROM memos WHERE id = ${memoData.id}`;
-    
+
     if (!existingMemo || existingMemo.length === 0) {
       return Response.json(
         { error: `Memo with ID '${memoData.id}' not found` },
         { status: 404 }
       );
     }
-    
+
     // Update the memo in the database
     const now = new Date().toISOString();
 
@@ -407,7 +430,7 @@ export async function editMemo(agent: Chat, request: Request): Promise<Response>
     if (memoData.links) {
       links = typeof memoData.links === 'string' ? memoData.links : JSON.stringify(memoData.links);
     }
-    
+
     // Generate updated vector embeddings for the content
     // Ensure vector_id is a string
     let vector_id = existingMemo[0].vector_id ? String(existingMemo[0].vector_id) : null;
@@ -416,10 +439,10 @@ export async function editMemo(agent: Chat, request: Request): Promise<Response>
       if (!vector_id) {
         vector_id = `memo-${memoData.id}`;
       }
-      
+
       // Generate embeddings using the Chat class method
       const embeddings = await agent.createEmbeddings(memoData.content);
-      
+
       // Update the vector embedding
       await agent.storeVectorEmbedding(vector_id, embeddings, {
         memo_id: memoData.id,
@@ -501,7 +524,7 @@ export async function deleteMemo(agent: Chat, request: Request): Promise<Respons
         { status: 404 }
       );
     }
-    
+
     // If the memo has a vector_id, delete it from Vectorize
     const vectorId = typeof memo[0].vector_id === 'string' ? memo[0].vector_id : String(memo[0].vector_id);
     if (vectorId) {
@@ -548,14 +571,14 @@ export async function searchMemosByVector(agent: Chat, request: Request): Promis
       { status: 400 }
     );
   }
-  
+
   try {
     // Generate embeddings for the search query
     const embeddings = await agent.createEmbeddings(query);
-    
+
     // Query Vectorize for similar vectors
     const vectorResults = await agent.searchSimilarVectors(embeddings, limit);
-    
+
     if (!vectorResults || !vectorResults.matches || vectorResults.matches.length === 0) {
       return Response.json({
         count: 0,
@@ -594,23 +617,23 @@ export async function searchMemosByVector(agent: Chat, request: Request): Promis
       SELECT * FROM memos
       WHERE id IN (${memoIdsStr})
     `;
-    
+
     // Create a map of memo id to memo object for quick lookup
     const memoMap: Record<string, any> = {};
     memos.forEach((memo: any) => {
       memoMap[memo.id] = memo;
     });
-    
+
     // Enhance vector results with memo content
     const enhancedMatches = vectorResults.matches.map((match: any) => {
       const memoId = match.metadata?.memo_id;
       const memo = memoMap[memoId];
-      
+
       if (memo) {
         return {
           ...match,
           memo: {
-            id: memo.id, 
+            id: memo.id,
             title: memo.title,
             content: memo.content,
             created: memo.created,
@@ -620,10 +643,10 @@ export async function searchMemosByVector(agent: Chat, request: Request): Promis
           }
         };
       }
-      
+
       return match;
     });
-    
+
     // Return the enhanced results
     return Response.json({
       count: enhancedMatches.length,
