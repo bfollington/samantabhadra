@@ -151,7 +151,60 @@ export async function listMemos(agent: Chat, request: Request): Promise<Response
       }
     }
 
-    return Response.json(memos, {
+    // Fetch reactions for all memos
+    const memoIds = memos.map((memo: any) => memo.id);
+    let reactions = [];
+
+    if (memoIds.length > 0) {
+      try {
+        // Create reactions table if it doesn't exist
+        await agent.sql`
+          CREATE TABLE IF NOT EXISTS reactions (
+            id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+            memo_id TEXT NOT NULL,
+            emoji TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            created TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(memo_id, emoji, user_id),
+            FOREIGN KEY (memo_id) REFERENCES memos (id) ON DELETE CASCADE
+          )
+        `;
+
+        // Fetch reactions for these memos
+        for (const memoId of memoIds) {
+          const memoReactions = await agent.sql`
+            SELECT memo_id, emoji, user_id
+            FROM reactions
+            WHERE memo_id = ${memoId}
+          `;
+          reactions.push(...memoReactions);
+        }
+      } catch (error) {
+        console.error('Error fetching reactions:', error);
+        // Continue without reactions if there's an error
+      }
+    }
+
+    // Group reactions by memo_id and emoji
+    const reactionsByMemo: { [memoId: string]: { [emoji: string]: string[] } } = {};
+
+    reactions.forEach((reaction: any) => {
+      if (!reactionsByMemo[reaction.memo_id]) {
+        reactionsByMemo[reaction.memo_id] = {};
+      }
+      if (!reactionsByMemo[reaction.memo_id][reaction.emoji]) {
+        reactionsByMemo[reaction.memo_id][reaction.emoji] = [];
+      }
+      reactionsByMemo[reaction.memo_id][reaction.emoji].push(reaction.user_id);
+    });
+
+    // Add reactions to each memo
+    const memosWithReactions = memos.map((memo: any) => ({
+      ...memo,
+      reactions: reactionsByMemo[memo.id] || {}
+    }));
+
+    return Response.json(memosWithReactions, {
       headers: {
         'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*',

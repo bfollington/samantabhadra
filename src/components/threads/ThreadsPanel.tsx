@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/button/Button";
 import { TextArea } from "@/components/input/TextArea";
 import { useRealtimeSession } from "@/hooks/useRealtimeSession";
-import { X, Plus, ChatCircle, User, Robot, ArrowLeft, PaperPlaneTilt, PencilSimple, Trash, Check, XCircle } from "@phosphor-icons/react";
+import { X, Plus, ChatCircle, User, Robot, ArrowLeft, PaperPlaneTilt, PencilSimple, Trash, Check, XCircle, Smiley } from "@phosphor-icons/react";
 
 interface Memo {
   id: string;
@@ -14,6 +14,7 @@ interface Memo {
   modified: string;
   parent_id?: string | null;
   author?: string;
+  reactions?: { [emoji: string]: string[] }; // emoji -> array of user IDs
 }
 
 interface ThreadsPanelProps {
@@ -23,11 +24,11 @@ interface ThreadsPanelProps {
 export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
   // Navigation state
   const [currentMemo, setCurrentMemo] = useState<Memo | null>(null);
-  const [breadcrumb, setBreadcrumb] = useState<Memo[]>([]);
 
   // Data state
   const [rootMemos, setRootMemos] = useState<Memo[]>([]);
   const [replies, setReplies] = useState<Memo[]>([]);
+  const [allThreadMemos, setAllThreadMemos] = useState<Memo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,6 +47,14 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
   // Reply counts state
   const [replyCounts, setReplyCounts] = useState<Map<string, number>>(new Map());
 
+  // Reactions state
+  const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null);
+  const [addingReaction, setAddingReaction] = useState<string | null>(null);
+  const [fallbackReactions, setFallbackReactions] = useState<Map<string, { [emoji: string]: string[] }>>(new Map());
+
+  // Fragment extraction state
+  const [extractingFragments, setExtractingFragments] = useState<string | null>(null);
+
   // Voice transcription
   const { startSession, stopSession, isSessionActive, transcription } = useRealtimeSession();
 
@@ -56,6 +65,20 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
       setReplyContent(transcribedText);
     }
   }, [transcription, isSessionActive]);
+
+  // Click outside handler for reaction picker
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showReactionPicker && !(event.target as Element).closest('.reaction-picker-container')) {
+        setShowReactionPicker(null);
+      }
+    };
+
+    if (showReactionPicker) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showReactionPicker]);
 
   // Load root memos on mount
   useEffect(() => {
@@ -112,30 +135,45 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
     }
   };
 
-  const navigateToMemo = (memo: Memo) => {
-    // Add current memo to breadcrumb if we're not at root
-    if (currentMemo) {
-      setBreadcrumb(prev => [...prev, currentMemo]);
+  const navigateToMemo = async (memo: Memo) => {
+    // Load full thread context to ensure we have all parent memos
+    try {
+      const threadResponse = await fetch(`/agents/chat/default/thread?slug=${encodeURIComponent(memo.slug)}`);
+      if (threadResponse.ok) {
+        const thread = await threadResponse.json();
+        setAllThreadMemos(thread.memos || []);
+      }
+    } catch (error) {
+      console.error('Error loading full thread context:', error);
     }
+
     setCurrentMemo(memo);
   };
 
-  const navigateBack = () => {
-    if (breadcrumb.length > 0) {
-      const previous = breadcrumb[breadcrumb.length - 1];
-      setBreadcrumb(prev => prev.slice(0, -1));
-      setCurrentMemo(previous);
-    } else {
-      // Go back to root
-      setCurrentMemo(null);
-      setReplies([]);
+  // Build thread history leading to a focused memo
+  const buildThreadHistory = (focusedMemo: Memo): Memo[] => {
+    const history: Memo[] = [];
+    let current = focusedMemo;
+
+    // Walk up the parent chain to build history using full thread context
+    while (current.parent_id) {
+      const parent = allThreadMemos.find(m => m.id === current.parent_id);
+      if (parent) {
+        history.unshift(parent);
+        current = parent;
+      } else {
+        break;
+      }
     }
+
+    return history;
   };
 
-  const navigateToRoot = () => {
+  const navigateBack = () => {
+    // Always go back to root view
     setCurrentMemo(null);
-    setBreadcrumb([]);
     setReplies([]);
+    setAllThreadMemos([]);
   };
 
   const openComposer = (parentMemo: Memo | null = null) => {
@@ -151,31 +189,129 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
   };
 
   const createReply = async () => {
-    if (!replyContent.trim() || !composerParent) return;
+    if (!replyContent.trim()) return;
 
     try {
       setCreatingReply(true);
       setError(null);
 
-      const response = await fetch("/agents/chat/default/create-reply", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          parent_slug: composerParent.slug,
-          content: replyContent,
-          author: "user"
-        }),
-      });
+      let response, result;
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to create reply: ${response.status} - ${errorText}`);
+      if (composerParent) {
+        // Creating a reply to an existing memo
+        response = await fetch("/agents/chat/default/create-reply", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            parent_slug: composerParent.slug,
+            content: replyContent,
+            author: "user"
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Failed to create reply: ${response.status} - ${errorText}`);
+        }
+
+        result = await response.json();
+        console.log('Reply created:', result);
+
+        // Extract reply ID from result for fragment extraction
+        const replyIdMatch = result.message?.match(/ID: ([a-f0-9-]+)/);
+        if (replyIdMatch) {
+          const replyId = replyIdMatch[1];
+          // Trigger fragment extraction asynchronously
+          extractFragmentsFromReply(replyId, composerParent);
+        }
+
+        // Auto-trigger agent response when replying to assistant OR if mentions agent
+        const shouldTriggerAgent = composerParent.author === 'assistant' ||
+          replyContent.includes('@sam') ||
+          replyContent.includes('@agent');
+
+        if (shouldTriggerAgent) {
+          const userReplySlugMatch = result.message?.match(/slug: ([^\s]+)/);
+          const userReplySlug = userReplySlugMatch ? userReplySlugMatch[1] : composerParent.slug;
+
+          setTimeout(async () => {
+            try {
+              const assistantResponse = await fetch("/agents/chat/default/create-reply", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  parent_slug: userReplySlug,
+                  content: "Thinking...",
+                  author: "assistant"
+                }),
+              });
+
+              if (assistantResponse.ok) {
+                const assistantResult = await assistantResponse.json();
+                const memoIdMatch = assistantResult.message?.match(/ID: ([a-f0-9-]+)/);
+
+                if (memoIdMatch) {
+                  const assistantMemoId = memoIdMatch[1];
+                  await fetch("/agents/chat/default/generate-response", {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                      memo_id: assistantMemoId
+                    }),
+                  });
+
+                  // Refresh view after AI response
+                  setTimeout(async () => {
+                    if (currentMemo) {
+                      await loadReplies(currentMemo);
+                    } else {
+                      await loadRootMemos();
+                    }
+                  }, 1000);
+                }
+              }
+            } catch (err) {
+              console.error('Error creating assistant reply:', err);
+            }
+          }, 100);
+        }
+      } else {
+        // Creating a new root memo
+        const slug = replyContent
+          .toLowerCase()
+          .replace(/[^a-z0-9\s]/g, "")
+          .trim()
+          .split(/\s+/)
+          .slice(0, 6)
+          .join("-") || `memo-${Date.now()}`;
+
+        response = await fetch("/agents/chat/default/create-memo", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            slug,
+            content: replyContent,
+            author: "user",
+            headers: JSON.stringify({})
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Failed to create memo: ${response.status} - ${errorText}`);
+        }
+
+        result = await response.json();
+        console.log('New memo created:', result);
       }
-
-      const result = await response.json();
-      console.log('Reply created:', result);
 
       // Close composer
       closeComposer();
@@ -186,60 +322,9 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
       } else {
         await loadRootMemos();
       }
-
-      // Handle AI mentions
-      if (replyContent.includes('@sam') || replyContent.includes('@agent')) {
-        const userReplySlugMatch = result.message?.match(/slug: ([^\s]+)/);
-        const userReplySlug = userReplySlugMatch ? userReplySlugMatch[1] : composerParent.slug;
-
-        setTimeout(async () => {
-          try {
-            const assistantResponse = await fetch("/agents/chat/default/create-reply", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                parent_slug: userReplySlug,
-                content: "Thinking...",
-                author: "assistant"
-              }),
-            });
-
-            if (assistantResponse.ok) {
-              const assistantResult = await assistantResponse.json();
-              const memoIdMatch = assistantResult.message?.match(/ID: ([a-f0-9-]+)/);
-
-              if (memoIdMatch) {
-                const assistantMemoId = memoIdMatch[1];
-                await fetch("/agents/chat/default/generate-response", {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                  },
-                  body: JSON.stringify({
-                    memo_id: assistantMemoId
-                  }),
-                });
-
-                // Refresh view after AI response
-                setTimeout(async () => {
-                  if (currentMemo) {
-                    await loadReplies(currentMemo);
-                  } else {
-                    await loadRootMemos();
-                  }
-                }, 1000);
-              }
-            }
-          } catch (err) {
-            console.error('Error creating assistant reply:', err);
-          }
-        }, 100);
-      }
     } catch (err) {
-      console.error('Error creating reply:', err);
-      setError(err instanceof Error ? err.message : 'Failed to create reply');
+      console.error('Error creating memo/reply:', err);
+      setError(err instanceof Error ? err.message : 'Failed to create memo/reply');
     } finally {
       setCreatingReply(false);
     }
@@ -354,6 +439,248 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
     });
   };
 
+  // Reaction functions
+  const addReaction = async (memoId: string, emoji: string) => {
+    try {
+      setAddingReaction(memoId);
+
+      // Optimistic update - add reaction immediately
+      setFallbackReactions(prev => {
+        const newReactions = new Map(prev);
+        const memoReactions = newReactions.get(memoId) || {};
+        const existingUsers = memoReactions[emoji] || [];
+
+        if (!existingUsers.includes("user")) {
+          memoReactions[emoji] = [...existingUsers, "user"];
+          newReactions.set(memoId, memoReactions);
+        }
+
+        return newReactions;
+      });
+
+      try {
+        const response = await fetch("/agents/chat/default/add-reaction", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            memo_id: memoId,
+            emoji: emoji,
+            user_id: "user" // In a real app, this would be the current user's ID
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`API failed: ${response.status}`);
+        }
+
+        // Refresh current view if API succeeded to get server state
+        if (currentMemo) {
+          await loadReplies(currentMemo);
+        } else {
+          await loadRootMemos();
+        }
+      } catch (apiError) {
+        console.log('API not available, keeping optimistic update');
+        // Keep the optimistic update since API isn't available
+      }
+
+      // If it's the bot emoji (🤖), trigger agent response
+      if (emoji === '🤖') {
+        const memo = currentMemo?.id === memoId ? currentMemo :
+          replies.find(r => r.id === memoId) ||
+          rootMemos.find(r => r.id === memoId);
+
+        if (memo) {
+          setTimeout(async () => {
+            try {
+              const assistantResponse = await fetch("/agents/chat/default/create-reply", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  parent_slug: memo.slug,
+                  content: "Thinking...",
+                  author: "assistant"
+                }),
+              });
+
+              if (assistantResponse.ok) {
+                const assistantResult = await assistantResponse.json();
+                const memoIdMatch = assistantResult.message?.match(/ID: ([a-f0-9-]+)/);
+
+                if (memoIdMatch) {
+                  const assistantMemoId = memoIdMatch[1];
+                  await fetch("/agents/chat/default/generate-response", {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                      memo_id: assistantMemoId
+                    }),
+                  });
+
+                  // Refresh view after AI response
+                  setTimeout(async () => {
+                    if (currentMemo) {
+                      await loadReplies(currentMemo);
+                    } else {
+                      await loadRootMemos();
+                    }
+                  }, 1000);
+                }
+              }
+            } catch (err) {
+              console.error('Error creating bot reaction response:', err);
+            }
+          }, 100);
+        }
+      }
+    } catch (err) {
+      console.error('Error adding reaction:', err);
+      setError(err instanceof Error ? err.message : 'Failed to add reaction');
+    } finally {
+      setAddingReaction(null);
+      setShowReactionPicker(null);
+    }
+  };
+
+  const removeReaction = async (memoId: string, emoji: string) => {
+    try {
+      // Optimistic update - remove reaction immediately
+      setFallbackReactions(prev => {
+        const newReactions = new Map(prev);
+        const memoReactions = newReactions.get(memoId) || {};
+        const existingUsers = memoReactions[emoji] || [];
+
+        memoReactions[emoji] = existingUsers.filter(user => user !== "user");
+        if (memoReactions[emoji].length === 0) {
+          delete memoReactions[emoji];
+        }
+
+        newReactions.set(memoId, memoReactions);
+        return newReactions;
+      });
+
+      try {
+        const response = await fetch("/agents/chat/default/remove-reaction", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            memo_id: memoId,
+            emoji: emoji,
+            user_id: "user"
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`API failed: ${response.status}`);
+        }
+
+        // Refresh current view if API succeeded to get server state
+        if (currentMemo) {
+          await loadReplies(currentMemo);
+        } else {
+          await loadRootMemos();
+        }
+      } catch (apiError) {
+        console.log('API not available, keeping optimistic update');
+        // Keep the optimistic update since API isn't available
+      }
+    } catch (err) {
+      console.error('Error removing reaction:', err);
+      setError(err instanceof Error ? err.message : 'Failed to remove reaction');
+    }
+  };
+
+  const hasUserReacted = (memo: Memo, emoji: string) => {
+    // Check API data first, then fallback data
+    const apiReaction = memo.reactions?.[emoji]?.includes("user") || false;
+    const fallbackReaction = fallbackReactions.get(memo.id)?.[emoji]?.includes("user") || false;
+    return apiReaction || fallbackReaction;
+  };
+
+  const getMemoReactions = (memo: Memo) => {
+    // Combine API reactions with fallback reactions
+    const apiReactions = memo.reactions || {};
+    const fallbackMemoReactions = fallbackReactions.get(memo.id) || {};
+
+    const combined: { [emoji: string]: string[] } = { ...apiReactions };
+
+    // Merge fallback reactions
+    Object.entries(fallbackMemoReactions).forEach(([emoji, users]) => {
+      if (combined[emoji]) {
+        // Merge users, avoiding duplicates
+        const allUsers = [...combined[emoji], ...users];
+        combined[emoji] = [...new Set(allUsers)];
+      } else {
+        combined[emoji] = users;
+      }
+    });
+
+    return combined;
+  };
+
+  // Fragment extraction for threaded memos
+  const extractFragmentsFromReply = async (replyId: string, parentMemo: Memo) => {
+    try {
+      console.log('Starting fragment extraction for reply:', replyId);
+      setExtractingFragments(replyId);
+
+      // Get the full thread context
+      const threadResponse = await fetch(`/agents/chat/default/thread?slug=${encodeURIComponent(parentMemo.slug)}`);
+      if (!threadResponse.ok) {
+        throw new Error('Failed to fetch thread for fragment extraction');
+      }
+
+      const thread = await threadResponse.json();
+
+      // Build conversation context
+      const conversationContext = thread.memos
+        .filter((memo: Memo) => memo.content !== "Thinking...")
+        .map((memo: Memo) => `${memo.author === 'assistant' ? 'Assistant' : 'User'}: ${memo.content}`)
+        .join('\n\n');
+
+      // Find the specific reply we just created
+      const newReply = thread.memos.find((memo: Memo) => memo.id === replyId);
+      if (!newReply) {
+        console.warn('Could not find new reply in thread for fragment extraction');
+        return;
+      }
+
+      // Call fragment extraction API
+      const extractionResponse = await fetch('/agents/chat/default/extract-fragments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          memo_id: replyId,
+          memo_content: newReply.content,
+          thread_context: conversationContext,
+          parent_memo_id: parentMemo.id
+        })
+      });
+
+      if (extractionResponse.ok) {
+        const extractionResult = await extractionResponse.json();
+        console.log('Fragment extraction completed:', extractionResult);
+      } else {
+        console.warn('Fragment extraction failed:', extractionResponse.status);
+      }
+    } catch (error) {
+      console.error('Error in fragment extraction:', error);
+      // Don't throw - fragment extraction is optional
+    } finally {
+      setExtractingFragments(null);
+    }
+  };
+
   const formatTime = (dateString: string) => {
     return new Date(dateString).toLocaleString();
   };
@@ -376,8 +703,10 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
     return (
       <div
         key={memo.id}
-        className={`group border-b border-neutral-200 dark:border-neutral-800 p-4 ${!isMain ? 'cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-900/50' : 'bg-neutral-50 dark:bg-neutral-900/30'
-          } transition-colors`}
+        className={`group border-b border-neutral-200 dark:border-neutral-800 transition-colors ${isMain
+          ? 'p-6 bg-neutral-50 dark:bg-neutral-900/30 border-l-2 border-[#F48120]'
+          : 'p-4 cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-900/50'
+          }`}
         onClick={!isMain && !isEditing ? () => navigateToMemo(memo) : undefined}
       >
         <div className="flex gap-3">
@@ -390,21 +719,29 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
               <span className="text-xs text-neutral-500">
                 {formatTime(memo.created)}
               </span>
+              {extractingFragments === memo.id && (
+                <span className="flex items-center gap-1 text-xs text-[#F48120]">
+                  <div className="animate-spin h-2 w-2 border border-current border-t-transparent rounded-full" />
+                  Extracting insights...
+                </span>
+              )}
 
               {/* Edit/Delete buttons */}
-              {!isEditing && memo.author !== 'assistant' && (
+              {!isEditing && (
                 <div className="ml-auto opacity-0 group-hover:opacity-100 flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      startEditMemo(memo);
-                    }}
-                    className="h-7 w-7 p-0 text-neutral-400 hover:text-neutral-600"
-                  >
-                    <PencilSimple size={16} />
-                  </Button>
+                  {memo.author !== 'assistant' && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        startEditMemo(memo);
+                      }}
+                      className="h-7 w-7 p-0 text-neutral-400 hover:text-neutral-600"
+                    >
+                      <PencilSimple size={16} />
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"
@@ -463,15 +800,17 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
               </div>
             ) : (
               <>
-                <p className={`text-sm leading-relaxed whitespace-pre-wrap ${isMain ? 'text-base text-neutral-900 dark:text-neutral-100' : 'text-neutral-800 dark:text-neutral-200'
+                <p className={`leading-relaxed whitespace-pre-wrap ${isMain
+                  ? 'text-base text-neutral-900 dark:text-neutral-100'
+                  : 'text-sm text-neutral-800 dark:text-neutral-200'
                   }`}>
                   {isMain ? memo.content : truncateContent(memo.content)}
                 </p>
 
                 <div className="flex items-center justify-between mt-3">
-                  {showRepliesCount && (
-                    <div className="flex items-center gap-4 text-xs text-neutral-500">
-                      <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-4">
+                    {showRepliesCount && (
+                      <div className="flex items-center gap-1 text-xs text-neutral-500">
                         <ChatCircle size={14} />
                         <span>
                           {(() => {
@@ -486,8 +825,61 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
                           })()}
                         </span>
                       </div>
+                    )}
+
+                    {/* Reactions */}
+                    <div className="flex items-center gap-1">
+                      {Object.entries(getMemoReactions(memo)).map(([emoji, users]) => (
+                        <button
+                          key={emoji}
+                          onClick={() => {
+                            if (hasUserReacted(memo, emoji)) {
+                              removeReaction(memo.id, emoji);
+                            } else {
+                              addReaction(memo.id, emoji);
+                            }
+                          }}
+                          className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs transition-colors ${hasUserReacted(memo, emoji)
+                            ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                            : 'bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+                            }`}
+                        >
+                          <span>{emoji}</span>
+                          <span>{users.length}</span>
+                        </button>
+                      ))}
+
+                      <div className="relative reaction-picker-container">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowReactionPicker(showReactionPicker === memo.id ? null : memo.id);
+                          }}
+                          className="h-6 w-6 p-0 text-neutral-400 hover:text-neutral-600"
+                        >
+                          <Smiley size={14} />
+                        </Button>
+
+                        {showReactionPicker === memo.id && (
+                          <div className="absolute bottom-full mb-2 left-0 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-xl p-2 flex gap-1 z-50 min-w-max">
+                            {['👍', '❤️', '😂', '😮', '😢', '🤖'].map((emoji) => (
+                              <button
+                                key={emoji}
+                                onClick={() => addReaction(memo.id, emoji)}
+                                disabled={addingReaction === memo.id}
+                                className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded text-lg transition-colors disabled:opacity-50"
+                                title={emoji === '🤖' ? 'Ask assistant to respond' : undefined}
+                              >
+                                {emoji}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  )}
+                  </div>
 
                   {isMain && (
                     <Button
@@ -515,7 +907,7 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
         {/* Header with Navigation */}
         <div className="flex-shrink-0 p-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            {(currentMemo || breadcrumb.length > 0) && (
+            {currentMemo && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -525,43 +917,9 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
                 <ArrowLeft size={16} />
               </Button>
             )}
-
-            <div className="flex items-center gap-2">
-              <h2 className="font-semibold text-lg">
-                {currentMemo ? 'Thread' : 'Memos'}
-              </h2>
-
-              {/* Breadcrumb */}
-              {breadcrumb.length > 0 && (
-                <div className="flex items-center gap-1 text-sm text-neutral-500">
-                  <button onClick={navigateToRoot} className="hover:text-neutral-700 dark:hover:text-neutral-300">
-                    Home
-                  </button>
-                  {breadcrumb.map((memo, index) => (
-                    <span key={memo.id}>
-                      <span className="mx-1">›</span>
-                      <button
-                        onClick={() => {
-                          setBreadcrumb(prev => prev.slice(0, index + 1));
-                          setCurrentMemo(memo);
-                        }}
-                        className="hover:text-neutral-700 dark:hover:text-neutral-300"
-                      >
-                        {truncateContent(memo.content, 30)}
-                      </button>
-                    </span>
-                  ))}
-                  {currentMemo && (
-                    <>
-                      <span className="mx-1">›</span>
-                      <span className="text-neutral-700 dark:text-neutral-300">
-                        {truncateContent(currentMemo.content, 30)}
-                      </span>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
+            <h2 className="font-semibold text-lg">
+              {currentMemo ? 'Thread' : 'Memos'}
+            </h2>
           </div>
 
           <div className="flex items-center gap-2">
@@ -596,39 +954,36 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
               <p className="text-neutral-600 dark:text-neutral-400">Loading...</p>
             </div>
           ) : currentMemo ? (
-            // Thread view: Show current memo + its replies
+            // Thread view: Show full thread linearly like Twitter/X
             <div>
-              {/* Current memo prominently displayed */}
-              {renderMemo(currentMemo, true, false)}
+              {(() => {
+                const threadHistory = buildThreadHistory(currentMemo);
+                const allThreadMemos = [...threadHistory, currentMemo, ...replies];
 
-              {/* Replies section */}
-              <div className="border-b-4 border-neutral-300 dark:border-neutral-700">
-                <div className="p-4 bg-neutral-100 dark:bg-neutral-800">
-                  <h3 className="text-sm font-medium text-neutral-600 dark:text-neutral-400">
-                    {replies.length > 0
-                      ? `${replies.length} ${replies.length === 1 ? 'Reply' : 'Replies'}`
-                      : 'No replies yet'
-                    }
-                  </h3>
-                </div>
-              </div>
+                return (
+                  <div>
+                    {allThreadMemos.map((memo) => {
+                      const isFocused = memo.id === currentMemo.id;
+                      return renderMemo(memo, isFocused, true);
+                    })}
 
-              {replies.length > 0 ? (
-                replies.map(reply => renderMemo(reply, false, true))
-              ) : (
-                <div className="p-8 text-center">
-                  <ChatCircle size={48} className="mx-auto mb-4 text-neutral-400" />
-                  <p className="text-sm text-neutral-500 mb-2">No replies yet</p>
-                  <p className="text-xs text-neutral-400 mb-4">Be the first to reply</p>
-                  <Button
-                    variant="primary"
-                    onClick={() => openComposer(currentMemo)}
-                  >
-                    <Plus size={16} className="mr-1" />
-                    Add Reply
-                  </Button>
-                </div>
-              )}
+                    {replies.length === 0 && (
+                      <div className="p-8 text-center">
+                        <ChatCircle size={48} className="mx-auto mb-4 text-neutral-400" />
+                        <p className="text-sm text-neutral-500 mb-2">No replies yet</p>
+                        <p className="text-xs text-neutral-400 mb-4">Be the first to reply</p>
+                        <Button
+                          variant="primary"
+                          onClick={() => openComposer(currentMemo)}
+                        >
+                          <Plus size={16} className="mr-1" />
+                          Add Reply
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           ) : (
             // Root view: Show all root memos
@@ -722,9 +1077,8 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
                 </div>
 
                 <div className="flex items-center justify-between">
-                  <span className={`text-xs ${replyContent.length > 500 ? 'text-red-500' : 'text-neutral-500'
-                    }`}>
-                    {replyContent.length}/500
+                  <span className="text-xs text-neutral-500">
+                    {replyContent.length} characters
                   </span>
 
                   <div className="flex gap-2">
@@ -740,7 +1094,7 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
                       variant="primary"
                       size="sm"
                       onClick={createReply}
-                      disabled={!replyContent.trim() || creatingReply || replyContent.length > 500}
+                      disabled={!replyContent.trim() || creatingReply}
                     >
                       {creatingReply ? (
                         'Posting...'

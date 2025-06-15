@@ -173,18 +173,18 @@ export class Chat extends AIChatAgent<Env, State> {
         throw new Error('AI service not available');
       }
 
-      const response = await this.env.AI.run(
-        '@cf/baai/bge-base-en-v1.5',
-        { text }
-      );
+      const embedding = await this.env.AI.run("@cf/baai/bge-base-en-v1.5", {
+        text: text
+      });
 
-      if (response?.data?.[0]) {
-        return response.data[0];
-      }
-
-      throw new Error('Failed to generate embeddings');
+      return embedding.data[0];
     } catch (error) {
-      console.error('Error creating embeddings:', error);
+      // Only log in development if it's not an authentication error
+      if (!(error instanceof Error && error.message.includes('Authentication error'))) {
+        console.error('Error creating embeddings:', error);
+      } else {
+        console.log('Embeddings unavailable in development mode (authentication error)');
+      }
       throw error;
     }
   }
@@ -681,6 +681,144 @@ export class Chat extends AIChatAgent<Env, State> {
       }
     }
 
+    // POST /agents/chat/<id>/create-fragment
+    if (url.pathname.endsWith("create-fragment") && request.method === "POST") {
+      try {
+        const data = await request.json() as {
+          title: string;
+          content: string;
+          source_memo_id?: string;
+        };
+        const { title, content, source_memo_id } = data;
+
+        if (!title || !content) {
+          return new Response("Missing required fields", { status: 400 });
+        }
+
+        // Ensure fragments table exists
+        await this.sql`
+          CREATE TABLE IF NOT EXISTS fragments (
+            id        TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+            slug      TEXT UNIQUE NOT NULL,
+            content   TEXT NOT NULL,
+            speaker   TEXT,
+            ts        TEXT NOT NULL,
+            convo_id  TEXT,
+            metadata  TEXT NOT NULL,
+            created   TEXT NOT NULL,
+            modified  TEXT NOT NULL
+          )`;
+
+        const now = new Date().toISOString();
+        const slug = title.toLowerCase()
+          .replace(/[^a-z0-9\s]/g, "")
+          .trim()
+          .split(/\s+/)
+          .slice(0, 6)
+          .join("-") || `fragment-${Date.now()}`;
+
+        const metadata = JSON.stringify({
+          source_memo_id: source_memo_id || null,
+          extracted_by: "auto"
+        });
+
+        const result = await this.sql`
+          INSERT INTO fragments (slug, content, speaker, ts, convo_id, metadata, created, modified)
+          VALUES (${slug}, ${content}, 'system', ${now}, null, ${metadata}, ${now}, ${now})
+          RETURNING id
+        `;
+
+        const fragmentId = result[0].id;
+
+        // Create vector embedding for the fragment
+        try {
+          const embedding = await this.env.AI.run("@cf/baai/bge-base-en-v1.5", {
+            text: content
+          });
+
+          await this.env.VECTORIZE.upsert([{
+            id: fragmentId,
+            values: embedding.data[0],
+            metadata: {
+              content: content,
+              type: "fragment",
+              slug: slug
+            }
+          }]);
+        } catch (vectorError) {
+          if (!(vectorError instanceof Error && (vectorError.message.includes('Authentication error') || vectorError.message.includes('VECTOR_UPSERT_ERROR')))) {
+            console.error("Error creating vector embedding for fragment:", vectorError);
+          } else {
+            console.log('Fragment vector embedding unavailable in development mode');
+          }
+          // Continue without vector embedding
+        }
+
+        return Response.json({
+          success: true,
+          id: fragmentId,
+          slug: slug,
+          message: "Fragment created successfully"
+        });
+      } catch (error) {
+        console.error("Error creating fragment:", error);
+        return Response.json({
+          success: false,
+          error: error instanceof Error ? error.message : "Internal server error"
+        }, { status: 500 });
+      }
+    }
+
+    // POST /agents/chat/<id>/link-fragments
+    if (url.pathname.endsWith("link-fragments") && request.method === "POST") {
+      try {
+        const data = await request.json() as {
+          from_memo_id: string;
+          to_fragment_id: string;
+          relationship: string;
+        };
+        const { from_memo_id, to_fragment_id, relationship } = data;
+
+        if (!from_memo_id || !to_fragment_id || !relationship) {
+          return new Response("Missing required fields", { status: 400 });
+        }
+
+        // Ensure fragment_edges table exists
+        await this.sql`
+          CREATE TABLE IF NOT EXISTS fragment_edges (
+            id       TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+            from_id  TEXT NOT NULL,
+            to_id    TEXT NOT NULL,
+            rel      TEXT NOT NULL,
+            weight   REAL,
+            metadata TEXT NOT NULL,
+            created  TEXT NOT NULL
+          )`;
+
+        const now = new Date().toISOString();
+        const metadata = JSON.stringify({
+          from_memo_id: from_memo_id,
+          relationship_type: "memo_to_fragment"
+        });
+
+        await this.sql`
+          INSERT INTO fragment_edges (from_id, to_id, rel, weight, metadata, created)
+          VALUES (${from_memo_id}, ${to_fragment_id}, ${relationship}, 1.0, ${metadata}, ${now})
+        `;
+
+        return Response.json({
+          success: true,
+          message: "Fragment link created successfully"
+        });
+      } catch (error) {
+        console.error("Error creating fragment link:", error);
+        return Response.json({
+          success: false,
+          error: error instanceof Error ? error.message : "Internal server error"
+        }, { status: 500 });
+      }
+    }
+
     return null;
   }
 
@@ -751,16 +889,64 @@ export class Chat extends AIChatAgent<Env, State> {
 
       console.log("All thread memos found:", allThreadMemos.length);
 
+      // Fetch reactions for all memos in the thread
+      const memoIds = allThreadMemos.map(memo => memo.id);
+      let reactions = [];
+
+      if (memoIds.length > 0) {
+        try {
+          // Create reactions table if it doesn't exist
+          await this.sql`
+            CREATE TABLE IF NOT EXISTS reactions (
+              id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+              memo_id TEXT NOT NULL,
+              emoji TEXT NOT NULL,
+              user_id TEXT NOT NULL,
+              created TEXT DEFAULT CURRENT_TIMESTAMP,
+              UNIQUE(memo_id, emoji, user_id),
+              FOREIGN KEY (memo_id) REFERENCES memos (id) ON DELETE CASCADE
+            )
+          `;
+
+          // Fetch reactions for these memos
+          for (const memoId of memoIds) {
+            const memoReactions = await this.sql`
+              SELECT memo_id, emoji, user_id
+              FROM reactions
+              WHERE memo_id = ${memoId}
+            `;
+            reactions.push(...memoReactions);
+          }
+        } catch (error) {
+          console.error('Error fetching reactions for thread:', error);
+          // Continue without reactions if there's an error
+        }
+      }
+
+      // Group reactions by memo_id and emoji
+      const reactionsByMemo: { [memoId: string]: { [emoji: string]: string[] } } = {};
+
+      reactions.forEach((reaction: any) => {
+        if (!reactionsByMemo[reaction.memo_id]) {
+          reactionsByMemo[reaction.memo_id] = {};
+        }
+        if (!reactionsByMemo[reaction.memo_id][reaction.emoji]) {
+          reactionsByMemo[reaction.memo_id][reaction.emoji] = [];
+        }
+        reactionsByMemo[reaction.memo_id][reaction.emoji].push(reaction.user_id);
+      });
+
       // Build tree structure with reply counts
       const memoMap = new Map();
 
-      // First pass: create memo objects with reply count and empty replies array
+      // First pass: create memo objects with reply count, reactions, and empty replies array
       for (const memo of allThreadMemos) {
         const replyCount = allThreadMemos.filter(m => m.parent_id === memo.id).length;
         memoMap.set(memo.id, {
           ...memo,
           replies: [],
-          replyCount
+          replyCount,
+          reactions: reactionsByMemo[memo.id] || {}
         });
       }
 
@@ -1076,6 +1262,302 @@ Please provide a helpful response to continue this conversation thread.`;
       const mcpServer = (await request.json()) as { url: string };
       const authUrl = await this.addMcpServer(mcpServer.url);
       return new Response(authUrl, { status: 200 });
+    }
+
+    // Handle add reaction endpoint
+    if (url.pathname.endsWith("/add-reaction") && request.method === "POST") {
+      try {
+        const data = await request.json() as { memo_id: string; emoji: string; user_id: string };
+        const { memo_id, emoji, user_id } = data;
+
+        if (!memo_id || !emoji || !user_id) {
+          return new Response("Missing required fields", { status: 400 });
+        }
+
+        // Initialize reactions table
+        await this.sql`
+          CREATE TABLE IF NOT EXISTS reactions (
+            id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+            memo_id TEXT NOT NULL,
+            emoji TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            created TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(memo_id, emoji, user_id),
+            FOREIGN KEY (memo_id) REFERENCES memos (id) ON DELETE CASCADE
+          )
+        `;
+
+        // Add reaction (INSERT OR IGNORE to handle duplicates)
+        await this.sql`
+          INSERT OR IGNORE INTO reactions (memo_id, emoji, user_id)
+          VALUES (${memo_id}, ${emoji}, ${user_id})
+        `;
+
+        return Response.json({ success: true, message: "Reaction added successfully" });
+      } catch (error) {
+        console.error("Error adding reaction:", error);
+        return Response.json({ success: false, error: error instanceof Error ? error.message : "Internal server error" }, { status: 500 });
+      }
+    }
+
+    // Handle remove reaction endpoint
+    if (url.pathname.endsWith("/remove-reaction") && request.method === "POST") {
+      try {
+        const data = await request.json() as { memo_id: string; emoji: string; user_id: string };
+        const { memo_id, emoji, user_id } = data;
+
+        if (!memo_id || !emoji || !user_id) {
+          return new Response("Missing required fields", { status: 400 });
+        }
+
+        // Remove reaction
+        await this.sql`
+          DELETE FROM reactions
+          WHERE memo_id = ${memo_id} AND emoji = ${emoji} AND user_id = ${user_id}
+        `;
+
+        return Response.json({ success: true, message: "Reaction removed successfully" });
+      } catch (error) {
+        console.error("Error removing reaction:", error);
+        return Response.json({ success: false, error: error instanceof Error ? error.message : "Internal server error" }, { status: 500 });
+      }
+    }
+
+    // Handle extract fragments endpoint
+    if (url.pathname.endsWith("/extract-fragments") && request.method === "POST") {
+      try {
+        const data = await request.json() as {
+          memo_id: string;
+          memo_content: string;
+          thread_context: string;
+          parent_memo_id: string
+        };
+        const { memo_id, memo_content, thread_context, parent_memo_id } = data;
+
+        if (!memo_id || !memo_content || !thread_context) {
+          return new Response("Missing required fields", { status: 400 });
+        }
+
+        console.log("Starting fragment extraction for memo:", memo_id);
+
+        // Search for similar existing fragments using vector similarity
+        let vectorResults = { matches: [] };
+        try {
+          const embedding = await this.env.AI.run("@cf/baai/bge-base-en-v1.5", {
+            text: memo_content
+          });
+
+          vectorResults = await this.env.VECTORIZE.query(embedding.data[0], {
+            topK: 5,
+            returnMetadata: true
+          });
+        } catch (error) {
+          if (!(error instanceof Error && error.message.includes('Authentication error'))) {
+            console.error('Error in vector similarity search:', error);
+          } else {
+            console.log('Vector search unavailable in development mode');
+          }
+          // Continue with empty results
+        }
+
+        const similarFragments = vectorResults.matches
+          .filter((match: any) => match.score > 0.7)
+          .map((match: any) => ({
+            id: match.id,
+            content: match.metadata?.content || '',
+            score: match.score
+          }));
+
+        // Build context for LLM
+        const similarFragmentsContext = similarFragments.length > 0
+          ? `\n\nSimilar existing fragments:\n${similarFragments.map(f => `- ${f.content} (similarity: ${f.score.toFixed(2)})`).join('\n')}`
+          : '';
+
+        const extractionPrompt = `You are analyzing a conversation thread to extract key concepts and insights as fragments for a knowledge base.
+
+Thread Context:
+${thread_context}
+
+New Reply to Extract From:
+${memo_content}
+
+${similarFragmentsContext}
+
+Please analyze this conversation and the new reply to identify:
+1. Key concepts, insights, or knowledge that should be preserved as fragments
+2. Connections to existing similar fragments (if any)
+3. Relationships between the newly extracted fragments
+
+Output your analysis as valid JSON in this exact format:
+{
+  "fragments": [
+    {
+      "title": "Brief descriptive title",
+      "content": "The key insight or concept to preserve",
+      "reason": "Why this is worth preserving"
+    }
+  ],
+  "links": [
+    {
+      "existing_fragment_id": "id_of_existing_fragment_to_link_to",
+      "relationship": "How this new content relates to the existing fragment"
+    }
+  ],
+  "internal_links": [
+    {
+      "from_fragment_index": 0,
+      "to_fragment_index": 1,
+      "relationship": "How these two extracted fragments relate to each other"
+    }
+  ]
+}
+
+Only extract fragments that contain genuinely useful insights, concepts, or knowledge. Avoid generic statements.
+If no fragments should be created, return empty arrays.
+Use internal_links to connect related fragments extracted from the same message.`;
+
+        console.log("Calling LLM for fragment extraction...");
+
+        const result = await generateText({
+          model: currentModel,
+          prompt: extractionPrompt,
+        });
+
+        console.log("LLM response:", result.text);
+
+        let extractionPlan;
+        try {
+          // Try to parse JSON from the response
+          const jsonMatch = result.text.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            extractionPlan = JSON.parse(jsonMatch[0]);
+          } else {
+            throw new Error("No JSON found in response");
+          }
+        } catch (parseError) {
+          console.error("Failed to parse LLM response as JSON:", parseError);
+          return Response.json({
+            success: false,
+            error: "Failed to parse extraction plan",
+            raw_response: result.text
+          }, { status: 500 });
+        }
+
+        console.log("Parsed extraction plan:", extractionPlan);
+
+        const createdFragments = [];
+        const createdLinks = [];
+
+        // Create fragments
+        if (extractionPlan.fragments && extractionPlan.fragments.length > 0) {
+          for (const fragment of extractionPlan.fragments) {
+            try {
+              // Create fragment using the fragments API
+              const fragmentResponse = await fetch(`${new URL(request.url).origin}/agents/chat/default/create-fragment`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  title: fragment.title,
+                  content: fragment.content,
+                  source_memo_id: memo_id
+                })
+              });
+
+              if (fragmentResponse.ok) {
+                const fragmentResult = await fragmentResponse.json();
+                createdFragments.push({
+                  ...fragment,
+                  id: fragmentResult.id
+                });
+                console.log("Created fragment:", fragment.title);
+              }
+            } catch (error) {
+              console.error("Error creating fragment:", error);
+            }
+          }
+        }
+
+        // Create internal links between newly created fragments
+        if (extractionPlan.internal_links && extractionPlan.internal_links.length > 0 && createdFragments.length > 1) {
+          for (const internalLink of extractionPlan.internal_links) {
+            try {
+              const fromFragment = createdFragments[internalLink.from_fragment_index];
+              const toFragment = createdFragments[internalLink.to_fragment_index];
+
+              if (fromFragment && toFragment) {
+                // Create bidirectional links between fragments
+                const linkResponse = await fetch(`${new URL(request.url).origin}/agents/chat/default/link-fragments`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    from_memo_id: fromFragment.id,
+                    to_fragment_id: toFragment.id,
+                    relationship: internalLink.relationship
+                  })
+                });
+
+                if (linkResponse.ok) {
+                  createdLinks.push({
+                    from: fromFragment.id,
+                    to: toFragment.id,
+                    relationship: internalLink.relationship
+                  });
+                  console.log("Created internal link:", fromFragment.id, "->", toFragment.id);
+                }
+              }
+            } catch (error) {
+              console.error("Error creating internal fragment link:", error);
+            }
+          }
+        }
+
+        // Create links to existing fragments
+        if (extractionPlan.links && extractionPlan.links.length > 0) {
+          for (const link of extractionPlan.links) {
+            try {
+              // Create link using the fragments API
+              const linkResponse = await fetch(`${new URL(request.url).origin}/agents/chat/default/link-fragments`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  from_memo_id: memo_id,
+                  to_fragment_id: link.existing_fragment_id,
+                  relationship: link.relationship
+                })
+              });
+
+              if (linkResponse.ok) {
+                createdLinks.push(link);
+                console.log("Created link to fragment:", link.existing_fragment_id);
+              }
+            } catch (error) {
+              console.error("Error creating fragment link:", error);
+            }
+          }
+        }
+
+        return Response.json({
+          success: true,
+          message: "Fragment extraction completed",
+          created_fragments: createdFragments.length,
+          created_links: createdLinks.length,
+          created_internal_links: extractionPlan.internal_links ? extractionPlan.internal_links.length : 0,
+          extraction_plan: extractionPlan
+        });
+
+      } catch (error) {
+        console.error("Error in fragment extraction:", error);
+        return Response.json({
+          success: false,
+          error: error instanceof Error ? error.message : "Internal server error"
+        }, { status: 500 });
+      }
     }
 
     return super.onRequest(request);
