@@ -1560,6 +1560,187 @@ Use internal_links to connect related fragments extracted from the same message.
       }
     }
 
+    // Handle generate thread summary endpoint
+    if (url.pathname.endsWith("/generate-thread-summary") && request.method === "POST") {
+      try {
+        const data = await request.json() as {
+          thread_slug: string;
+          conversation_context: string;
+          total_replies: number;
+        };
+        const { thread_slug, conversation_context, total_replies } = data;
+
+        if (!thread_slug || !conversation_context) {
+          return new Response("Missing required fields", { status: 400 });
+        }
+
+        console.log("Starting thread summary generation for:", thread_slug);
+        console.log("Conversation context length:", conversation_context.length);
+        console.log("Total replies:", total_replies);
+
+        const summaryPrompt = `You are analyzing a conversation thread to create a concise, informative summary for display on a thread listing.
+
+Conversation Content:
+${conversation_context}
+
+Thread Statistics:
+- Total messages: ${total_replies}
+- Root thread slug: ${thread_slug}
+
+Please create a brief summary (1-2 sentences, max 150 characters) that captures:
+1. The main topic or theme of the conversation
+2. Key insights or conclusions reached
+3. The general tone or type of discussion
+
+The summary should help users quickly understand what this thread is about without reading the full conversation.
+
+Return only the summary text, no additional formatting or explanation.`;
+
+        console.log("Calling LLM for thread summary...");
+
+        const result = await generateText({
+          model: currentModel,
+          prompt: summaryPrompt,
+        });
+
+        const summary = result.text.trim();
+        console.log("Generated summary:", summary);
+        console.log("Summary length:", summary.length);
+
+        // Update the root memo with the summary
+        const now = new Date().toISOString();
+
+        console.log("Updating memo with slug:", thread_slug);
+        const updateResult = await this.sql`
+          UPDATE memos
+          SET
+            summary = ${summary},
+            modified = ${now}
+          WHERE slug = ${thread_slug} AND parent_id IS NULL
+        `;
+
+        console.log("Update result:", updateResult);
+        console.log("Rows affected:", updateResult.changes || 'unknown');
+        console.log("Thread summary updated for:", thread_slug);
+
+        // Verify the update worked
+        const verifyResult = await this.sql`
+          SELECT slug, summary FROM memos WHERE slug = ${thread_slug} AND parent_id IS NULL
+        `;
+        console.log("Verification query result:", verifyResult);
+
+        return Response.json({
+          success: true,
+          message: "Thread summary generated successfully",
+          summary: summary
+        });
+
+      } catch (error) {
+        console.error("Error in thread summary generation:", error);
+        return Response.json({
+          success: false,
+          error: error instanceof Error ? error.message : "Internal server error"
+        }, { status: 500 });
+      }
+    }
+
+    // Handle find related content endpoint
+    if (url.pathname.endsWith("/find-related-content") && request.method === "POST") {
+      try {
+        const data = await request.json() as {
+          memo_id: string;
+          content: string;
+        };
+        const { memo_id, content } = data;
+
+        if (!memo_id || !content) {
+          return new Response("Missing required fields", { status: 400 });
+        }
+
+        console.log("Finding related content for memo:", memo_id);
+
+        let relatedMemos = [];
+        let relatedFragments = [];
+
+        try {
+          // Generate embeddings for the content
+          const embedding = await this.env.AI.run("@cf/baai/bge-base-en-v1.5", {
+            text: content
+          });
+
+          // Search for similar memos
+          const memoVectorResults = await this.env.VECTORIZE.query(embedding.data[0], {
+            topK: 10,
+            returnMetadata: true
+          });
+
+          const similarMemoIds = memoVectorResults.matches
+            .filter((match: any) => match.score > 0.7 && match.metadata?.memo_id !== memo_id)
+            .map((match: any) => ({
+              memo_id: match.metadata?.memo_id,
+              similarity: match.score
+            }));
+
+          // Fetch memo details for similar memos
+          if (similarMemoIds.length > 0) {
+            for (const { memo_id: similarMemoId, similarity } of similarMemoIds) {
+              const memoResults = await this.sql`
+                SELECT id, slug, content, author, created, modified, parent_id, summary
+                FROM memos
+                WHERE id = ${similarMemoId}
+              `;
+
+              if (memoResults.length > 0) {
+                relatedMemos.push({
+                  ...memoResults[0],
+                  similarity
+                });
+              }
+            }
+          }
+
+          // Search for similar fragments
+          const fragmentVectorResults = await this.env.VECTORIZE.query(embedding.data[0], {
+            topK: 5,
+            returnMetadata: true
+          });
+
+          const similarFragmentIds = fragmentVectorResults.matches
+            .filter((match: any) => match.score > 0.7 && match.metadata?.type === 'fragment')
+            .map((match: any) => ({
+              fragment_id: match.id,
+              similarity: match.score,
+              content: match.metadata?.content || ''
+            }));
+
+          relatedFragments = similarFragmentIds.slice(0, 5);
+
+        } catch (vectorError) {
+          if (!(vectorError instanceof Error && vectorError.message.includes('Authentication error'))) {
+            console.error('Error in vector similarity search for related content:', vectorError);
+          } else {
+            console.log('Vector search unavailable in development mode for related content');
+          }
+          // Continue with empty results if vector search fails
+        }
+
+        console.log(`Found ${relatedMemos.length} related memos and ${relatedFragments.length} related fragments`);
+
+        return Response.json({
+          success: true,
+          memos: relatedMemos,
+          fragments: relatedFragments
+        });
+
+      } catch (error) {
+        console.error("Error finding related content:", error);
+        return Response.json({
+          success: false,
+          error: error instanceof Error ? error.message : "Internal server error"
+        }, { status: 500 });
+      }
+    }
+
     return super.onRequest(request);
   }
 }

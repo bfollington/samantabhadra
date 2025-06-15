@@ -66,7 +66,8 @@ export async function initMemosTable(agent: Chat): Promise<boolean> {
         headers TEXT NOT NULL,
         links TEXT NOT NULL,
         created TEXT NOT NULL,
-        modified TEXT NOT NULL
+        modified TEXT NOT NULL,
+        summary TEXT
       )
     `;
 
@@ -97,6 +98,15 @@ export async function initMemosTable(agent: Chat): Promise<boolean> {
     } catch (error) {
       console.log('Adding author column to memos table');
       await agent.sql`ALTER TABLE memos ADD COLUMN author TEXT DEFAULT 'user'`;
+    }
+
+    // Ensure the summary column exists
+    try {
+      await agent.sql`SELECT summary FROM memos LIMIT 1`;
+      console.log('summary column already exists');
+    } catch (error) {
+      console.log('Adding summary column to memos table');
+      await agent.sql`ALTER TABLE memos ADD COLUMN summary TEXT`;
     }
 
     // Create an index on the slug for faster lookups

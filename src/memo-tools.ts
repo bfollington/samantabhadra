@@ -92,6 +92,15 @@ export async function initMemosTableWithAgent(agent: any) {
       await agent.sql`ALTER TABLE memos ADD COLUMN author TEXT DEFAULT 'user'`;
     }
 
+    // Ensure the summary column exists
+    try {
+      await agent.sql`SELECT summary FROM memos LIMIT 1`;
+      console.log('summary column already exists');
+    } catch (error) {
+      console.log('Adding summary column to memos table');
+      await agent.sql`ALTER TABLE memos ADD COLUMN summary TEXT`;
+    }
+
     // Create an index on the slug for faster lookups
     await agent.sql`
       CREATE INDEX IF NOT EXISTS idx_memos_slug ON memos(slug)

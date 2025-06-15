@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/button/Button";
 import { TextArea } from "@/components/input/TextArea";
 import { useRealtimeSession } from "@/hooks/useRealtimeSession";
-import { X, Plus, ChatCircle, User, Robot, ArrowLeft, PaperPlaneTilt, PencilSimple, Trash, Check, XCircle, Smiley } from "@phosphor-icons/react";
+import { X, Plus, ChatCircle, User, Robot, ArrowLeft, PaperPlaneTilt, PencilSimple, Trash, Check, XCircle, Smiley, Graph } from "@phosphor-icons/react";
 
 interface Memo {
   id: string;
@@ -15,6 +15,7 @@ interface Memo {
   parent_id?: string | null;
   author?: string;
   reactions?: { [emoji: string]: string[] }; // emoji -> array of user IDs
+  summary?: string;
 }
 
 interface ThreadsPanelProps {
@@ -54,6 +55,14 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
 
   // Fragment extraction state
   const [extractingFragments, setExtractingFragments] = useState<string | null>(null);
+
+  // Summary generation state
+  const [generatingSummary, setGeneratingSummary] = useState<string | null>(null);
+
+  // Related content state
+  const [showRelatedContent, setShowRelatedContent] = useState<string | null>(null);
+  const [relatedContent, setRelatedContent] = useState<{ memos: Memo[], fragments: any[] }>({ memos: [], fragments: [] });
+  const [loadingRelated, setLoadingRelated] = useState(false);
 
   // Voice transcription
   const { startSession, stopSession, isSessionActive, transcription } = useRealtimeSession();
@@ -227,6 +236,9 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
           extractFragmentsFromReply(replyId, composerParent);
         }
 
+        // Generate thread summary asynchronously
+        generateThreadSummary(composerParent.slug);
+
         // Auto-trigger agent response when replying to assistant OR if mentions agent
         const shouldTriggerAgent = composerParent.author === 'assistant' ||
           replyContent.includes('@sam') ||
@@ -311,6 +323,12 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
 
         result = await response.json();
         console.log('New memo created:', result);
+
+        // Generate summary for new root memo
+        const newMemoSlugMatch = result.message?.match(/slug: ([^\s]+)/);
+        if (newMemoSlugMatch) {
+          generateThreadSummary(newMemoSlugMatch[1]);
+        }
       }
 
       // Close composer
@@ -627,6 +645,43 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
   };
 
   // Fragment extraction for threaded memos
+  // Fetch related content for a memo
+  const fetchRelatedContent = async (memoId: string, content: string) => {
+    try {
+      setLoadingRelated(true);
+      setShowRelatedContent(memoId);
+
+      const response = await fetch('/agents/chat/default/find-related-content', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          memo_id: memoId,
+          content: content
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setRelatedContent(result);
+      } else {
+        console.warn('Failed to fetch related content:', response.status);
+        setRelatedContent({ memos: [], fragments: [] });
+      }
+    } catch (error) {
+      console.error('Error fetching related content:', error);
+      setRelatedContent({ memos: [], fragments: [] });
+    } finally {
+      setLoadingRelated(false);
+    }
+  };
+
+  const closeRelatedContent = () => {
+    setShowRelatedContent(null);
+    setRelatedContent({ memos: [], fragments: [] });
+  };
+
   const extractFragmentsFromReply = async (replyId: string, parentMemo: Memo) => {
     try {
       console.log('Starting fragment extraction for reply:', replyId);
@@ -678,6 +733,56 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
       // Don't throw - fragment extraction is optional
     } finally {
       setExtractingFragments(null);
+    }
+  };
+
+  // Generate thread summary
+  const generateThreadSummary = async (threadRootSlug: string) => {
+    try {
+      console.log('Starting thread summary generation for:', threadRootSlug);
+      setGeneratingSummary(threadRootSlug);
+
+      // Get the full thread context
+      const threadResponse = await fetch(`/agents/chat/default/thread?slug=${encodeURIComponent(threadRootSlug)}`);
+      if (!threadResponse.ok) {
+        throw new Error('Failed to fetch thread for summary generation');
+      }
+
+      const thread = await threadResponse.json();
+
+      // Build full conversation context
+      const conversationContext = thread.memos
+        .filter((memo: Memo) => memo.content !== "Thinking...")
+        .map((memo: Memo) => `${memo.author === 'assistant' ? 'Assistant' : 'User'}: ${memo.content}`)
+        .join('\n\n');
+
+      // Call summary generation API
+      const summaryResponse = await fetch('/agents/chat/default/generate-thread-summary', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          thread_slug: threadRootSlug,
+          conversation_context: conversationContext,
+          total_replies: thread.memos.length
+        })
+      });
+
+      if (summaryResponse.ok) {
+        const summaryResult = await summaryResponse.json();
+        console.log('Thread summary generated:', summaryResult);
+
+        // Refresh root memos to get updated summary
+        await loadRootMemos();
+      } else {
+        console.warn('Thread summary generation failed:', summaryResponse.status);
+      }
+    } catch (error) {
+      console.error('Error in thread summary generation:', error);
+      // Don't throw - summary generation is optional
+    } finally {
+      setGeneratingSummary(null);
     }
   };
 
@@ -760,9 +865,12 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
                   </Button>
                 </div>
               )}
+
+              {/* Always visible related content button */}
+
             </div>
 
-            {isEditing ? (
+            {editingMemoId === memo.id ? (
               <div className="space-y-3">
                 <TextArea
                   value={editingContent}
@@ -804,8 +912,37 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
                   ? 'text-base text-neutral-900 dark:text-neutral-100'
                   : 'text-sm text-neutral-800 dark:text-neutral-200'
                   }`}>
-                  {isMain ? memo.content : truncateContent(memo.content)}
+                  {(() => {
+                    if (isMain) {
+                      return memo.content;
+                    }
+
+                    // In root view, show summary if available
+                    if (!currentMemo && memo.summary && memo.summary.trim()) {
+                      console.log('Showing summary for memo:', memo.slug, 'Summary:', memo.summary);
+                      return memo.summary;
+                    }
+
+                    // Fallback to truncated content
+                    console.log('Showing content for memo:', memo.slug, 'Has summary:', !!memo.summary);
+                    return truncateContent(memo.content);
+                  })()}
                 </p>
+
+                {/* Show content preview when summary is displayed */}
+                {!isMain && !currentMemo && memo.summary && memo.summary.trim() && (
+                  <div className="mt-2 p-2 bg-neutral-50 dark:bg-neutral-800 rounded text-xs text-neutral-500 dark:text-neutral-400">
+                    <span className="font-medium">Original:</span> {truncateContent(memo.content, 100)}
+                  </div>
+                )}
+
+                {/* Show summary generation indicator */}
+                {generatingSummary === memo.slug && (
+                  <div className="mt-2 flex items-center gap-2 text-xs text-[#F48120]">
+                    <div className="animate-spin h-2 w-2 border border-current border-t-transparent rounded-full" />
+                    Generating summary...
+                  </div>
+                )}
 
                 <div className="flex items-center justify-between mt-3">
                   <div className="flex items-center gap-4">
@@ -857,9 +994,9 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
                             e.stopPropagation();
                             setShowReactionPicker(showReactionPicker === memo.id ? null : memo.id);
                           }}
-                          className="h-6 w-6 p-0 text-neutral-400 hover:text-neutral-600"
+                          className="h-8 w-8 p-0 text-neutral-400 hover:text-neutral-600"
                         >
-                          <Smiley size={14} />
+                          <Smiley size={16} />
                         </Button>
 
                         {showReactionPicker === memo.id && (
@@ -878,6 +1015,18 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
                           </div>
                         )}
                       </div>
+
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          fetchRelatedContent(memo.id, memo.content);
+                        }}
+                        className="h-8 w-8 p-0 text-neutral-400 hover:text-[#F48120]"
+                      >
+                        <Graph size={16} />
+                      </Button>
                     </div>
                   </div>
 
@@ -956,6 +1105,24 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
           ) : currentMemo ? (
             // Thread view: Show full thread linearly like Twitter/X
             <div>
+              {/* Thread Summary */}
+              {(() => {
+                const threadHistory = buildThreadHistory(currentMemo);
+                const rootMemo = threadHistory.length > 0 ? threadHistory[0] : currentMemo;
+
+                return rootMemo.summary ? (
+                  <div className="p-4 bg-gradient-to-r from-[#F48120]/5 to-transparent border-b-2 border-[#F48120]/20">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-2 h-2 rounded-full bg-[#F48120]"></div>
+                      <h3 className="text-sm font-medium text-[#F48120]">Thread Summary</h3>
+                    </div>
+                    <p className="text-sm text-neutral-700 dark:text-neutral-300 leading-relaxed">
+                      {rootMemo.summary}
+                    </p>
+                  </div>
+                ) : null;
+              })()}
+
               {(() => {
                 const threadHistory = buildThreadHistory(currentMemo);
                 const allThreadMemos = [...threadHistory, currentMemo, ...replies];
@@ -1108,6 +1275,315 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Related Content Modal */}
+      {showRelatedContent && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-neutral-200 dark:border-neutral-800">
+              <div className="flex items-center gap-2">
+                <Graph size={20} className="text-[#F48120]" />
+                <h3 className="font-semibold">Related Content</h3>
+              </div>
+              <Button variant="ghost" size="sm" onClick={closeRelatedContent}>
+                <X size={20} />
+              </Button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4">
+              {loadingRelated ? (
+                <div className="p-8 text-center">
+                  <div className="animate-spin w-8 h-8 border-2 border-[#F48120] border-t-transparent rounded-full mx-auto mb-4"></div>
+                  <p className="text-neutral-600 dark:text-neutral-400">Finding related content...</p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Related Memos */}
+                  {relatedContent.memos.length > 0 && (
+                    <div>
+                      <h4 className="font-medium text-neutral-700 dark:text-neutral-300 mb-3">
+                        Related Memos ({relatedContent.memos.length})
+                      </h4>
+                      <div className="space-y-2">
+                        {relatedContent.memos.map((memo: Memo) => (
+                          <div
+                            key={memo.id}
+                            className="p-3 border border-neutral-200 dark:border-neutral-700 rounded-lg cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+                            onClick={() => {
+                              closeRelatedContent();
+                              navigateToMemo(memo);
+                            }}
+                          >
+                            <div className="flex items-center gap-2 mb-1">
+                              {getAuthorIcon(memo.author)}
+                              <span className="text-xs font-medium">
+                                {memo.author === 'assistant' ? 'Assistant' : 'You'}
+                              </span>
+                              <span className="text-xs text-neutral-500">
+                                {formatTime(memo.created)}
+                              </span>
+                            </div>
+                            <p className="text-sm text-neutral-800 dark:text-neutral-200">
+                              {truncateContent(memo.content, 150)}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Related Fragments */}
+                  {relatedContent.fragments.length > 0 && (
+                    <div>
+                      <h4 className="font-medium text-neutral-700 dark:text-neutral-300 mb-3">
+                        Related Fragments ({relatedContent.fragments.length})
+                      </h4>
+                      <div className="space-y-2">
+                        {relatedContent.fragments.map((fragment: any) => (
+                          <div
+                            key={fragment.id}
+                            className="p-3 border border-neutral-200 dark:border-neutral-700 rounded-lg bg-gradient-to-r from-[#F48120]/5 to-transparent"
+                          >
+                            <div className="flex items-center gap-2 mb-1">
+                              <div className="w-2 h-2 rounded-full bg-[#F48120]"></div>
+                              <span className="text-xs font-medium text-[#F48120]">
+                                Fragment
+                              </span>
+                              {fragment.similarity && (
+                                <span className="text-xs text-neutral-500">
+                                  {Math.round(fragment.similarity * 100)}% similar
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-sm text-neutral-800 dark:text-neutral-200">
+                              {fragment.content}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* No results */}
+                  {relatedContent.memos.length === 0 && relatedContent.fragments.length === 0 && (
+                    <div className="p-8 text-center">
+                      <Graph size={48} className="mx-auto mb-4 text-neutral-400" />
+                      <p className="text-sm text-neutral-500 mb-2">No related content found</p>
+                      <p className="text-xs text-neutral-400">This memo appears to be unique or on a new topic</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Related Content Modal */}
+      {showRelatedContent && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-neutral-200 dark:border-neutral-800">
+              <div className="flex items-center gap-2">
+                <Graph size={20} className="text-[#F48120]" />
+                <h3 className="font-semibold">Related Content</h3>
+              </div>
+              <Button variant="ghost" size="sm" onClick={closeRelatedContent}>
+                <X size={20} />
+              </Button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4">
+              {loadingRelated ? (
+                <div className="p-8 text-center">
+                  <div className="animate-spin w-8 h-8 border-2 border-[#F48120] border-t-transparent rounded-full mx-auto mb-4"></div>
+                  <p className="text-neutral-600 dark:text-neutral-400">Finding related content...</p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Related Memos */}
+                  {relatedContent.memos.length > 0 && (
+                    <div>
+                      <h4 className="font-medium text-neutral-700 dark:text-neutral-300 mb-3">
+                        Related Memos ({relatedContent.memos.length})
+                      </h4>
+                      <div className="space-y-2">
+                        {relatedContent.memos.map((memo: Memo) => (
+                          <div
+                            key={memo.id}
+                            className="p-3 border border-neutral-200 dark:border-neutral-700 rounded-lg cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+                            onClick={() => {
+                              closeRelatedContent();
+                              navigateToMemo(memo);
+                            }}
+                          >
+                            <div className="flex items-center gap-2 mb-1">
+                              {getAuthorIcon(memo.author)}
+                              <span className="text-xs font-medium">
+                                {memo.author === 'assistant' ? 'Assistant' : 'You'}
+                              </span>
+                              <span className="text-xs text-neutral-500">
+                                {formatTime(memo.created)}
+                              </span>
+                            </div>
+                            <p className="text-sm text-neutral-800 dark:text-neutral-200">
+                              {truncateContent(memo.content, 150)}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Related Fragments */}
+                  {relatedContent.fragments.length > 0 && (
+                    <div>
+                      <h4 className="font-medium text-neutral-700 dark:text-neutral-300 mb-3">
+                        Related Fragments ({relatedContent.fragments.length})
+                      </h4>
+                      <div className="space-y-2">
+                        {relatedContent.fragments.map((fragment: any) => (
+                          <div
+                            key={fragment.id}
+                            className="p-3 border border-neutral-200 dark:border-neutral-700 rounded-lg bg-gradient-to-r from-[#F48120]/5 to-transparent"
+                          >
+                            <div className="flex items-center gap-2 mb-1">
+                              <div className="w-2 h-2 rounded-full bg-[#F48120]"></div>
+                              <span className="text-xs font-medium text-[#F48120]">
+                                Fragment
+                              </span>
+                              {fragment.similarity && (
+                                <span className="text-xs text-neutral-500">
+                                  {Math.round(fragment.similarity * 100)}% similar
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-sm text-neutral-800 dark:text-neutral-200">
+                              {fragment.content}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* No results */}
+                  {relatedContent.memos.length === 0 && relatedContent.fragments.length === 0 && (
+                    <div className="p-8 text-center">
+                      <Graph size={48} className="mx-auto mb-4 text-neutral-400" />
+                      <p className="text-sm text-neutral-500 mb-2">No related content found</p>
+                      <p className="text-xs text-neutral-400">This memo appears to be unique or on a new topic</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Related Content Modal */}
+      {showRelatedContent && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-neutral-200 dark:border-neutral-800">
+              <div className="flex items-center gap-2">
+                <Graph size={20} className="text-[#F48120]" />
+                <h3 className="font-semibold">Related Content</h3>
+              </div>
+              <Button variant="ghost" size="sm" onClick={closeRelatedContent}>
+                <X size={20} />
+              </Button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4">
+              {loadingRelated ? (
+                <div className="p-8 text-center">
+                  <div className="animate-spin w-8 h-8 border-2 border-[#F48120] border-t-transparent rounded-full mx-auto mb-4"></div>
+                  <p className="text-neutral-600 dark:text-neutral-400">Finding related content...</p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Related Memos */}
+                  {relatedContent.memos.length > 0 && (
+                    <div>
+                      <h4 className="font-medium text-neutral-700 dark:text-neutral-300 mb-3">
+                        Related Memos ({relatedContent.memos.length})
+                      </h4>
+                      <div className="space-y-2">
+                        {relatedContent.memos.map((memo: Memo) => (
+                          <div
+                            key={memo.id}
+                            className="p-3 border border-neutral-200 dark:border-neutral-700 rounded-lg cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+                            onClick={() => {
+                              closeRelatedContent();
+                              navigateToMemo(memo);
+                            }}
+                          >
+                            <div className="flex items-center gap-2 mb-1">
+                              {getAuthorIcon(memo.author)}
+                              <span className="text-xs font-medium">
+                                {memo.author === 'assistant' ? 'Assistant' : 'You'}
+                              </span>
+                              <span className="text-xs text-neutral-500">
+                                {formatTime(memo.created)}
+                              </span>
+                            </div>
+                            <p className="text-sm text-neutral-800 dark:text-neutral-200">
+                              {truncateContent(memo.content, 150)}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Related Fragments */}
+                  {relatedContent.fragments.length > 0 && (
+                    <div>
+                      <h4 className="font-medium text-neutral-700 dark:text-neutral-300 mb-3">
+                        Related Fragments ({relatedContent.fragments.length})
+                      </h4>
+                      <div className="space-y-2">
+                        {relatedContent.fragments.map((fragment: any) => (
+                          <div
+                            key={fragment.id}
+                            className="p-3 border border-neutral-200 dark:border-neutral-700 rounded-lg bg-gradient-to-r from-[#F48120]/5 to-transparent"
+                          >
+                            <div className="flex items-center gap-2 mb-1">
+                              <div className="w-2 h-2 rounded-full bg-[#F48120]"></div>
+                              <span className="text-xs font-medium text-[#F48120]">
+                                Fragment
+                              </span>
+                              {fragment.similarity && (
+                                <span className="text-xs text-neutral-500">
+                                  {Math.round(fragment.similarity * 100)}% similar
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-sm text-neutral-800 dark:text-neutral-200">
+                              {fragment.content}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* No results */}
+                  {relatedContent.memos.length === 0 && relatedContent.fragments.length === 0 && (
+                    <div className="p-8 text-center">
+                      <Graph size={48} className="mx-auto mb-4 text-neutral-400" />
+                      <p className="text-sm text-neutral-500 mb-2">No related content found</p>
+                      <p className="text-xs text-neutral-400">This memo appears to be unique or on a new topic</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
