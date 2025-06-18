@@ -1056,8 +1056,8 @@ export class Chat extends AIChatAgent<Env, State> {
     // Handle generate response endpoint
     if (url.pathname.endsWith("/generate-response") && request.method === "POST") {
       try {
-        const data = await request.json() as { memo_id: string };
-        const { memo_id } = data;
+        const data = await request.json() as { memo_id: string; persona_id?: string; emoji?: string };
+        const { memo_id, persona_id, emoji } = data;
 
         console.log("Generate response request for memo:", memo_id);
 
@@ -1104,30 +1104,95 @@ export class Chat extends AIChatAgent<Env, State> {
           contextBlocks += `\n\n---- Related memos ----\n${memoContext}\n--------------------------------\n`;
         }
 
-        const systemPrompt = `${SYSTEM_PROMPT}${contextBlocks}
+        // Get persona if specified
+        let persona = null;
+        let personaModel = null;
+        if (persona_id || emoji) {
+          // Initialize emoji personas table first
+          await this.sql`
+            CREATE TABLE IF NOT EXISTS emoji_personas (
+              id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+              emoji TEXT NOT NULL UNIQUE,
+              name TEXT NOT NULL,
+              description TEXT NOT NULL,
+              instructions TEXT NOT NULL,
+              model_preference TEXT,
+              created TEXT DEFAULT CURRENT_TIMESTAMP,
+              modified TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `;
+
+          if (persona_id) {
+            const personaResult = await this.sql`
+              SELECT * FROM emoji_personas WHERE id = ${persona_id}
+            `;
+            if (personaResult.length > 0) {
+              persona = personaResult[0];
+            }
+          } else if (emoji) {
+            const personaResult = await this.sql`
+              SELECT * FROM emoji_personas WHERE emoji = ${emoji}
+            `;
+            if (personaResult.length > 0) {
+              persona = personaResult[0];
+            }
+          }
+
+          // Set model based on persona preference
+          if (persona?.model_preference) {
+            personaModel = setCurrentModel(persona.model_preference);
+            console.log(`Using persona "${persona.name}" with model: ${persona.model_preference}`);
+          }
+        }
+
+        // Build system prompt with persona instructions
+        let baseSystemPrompt = `${SYSTEM_PROMPT}${contextBlocks}
 
 Thread context:
-${threadContext}
+${threadContext}`;
+
+        let systemPrompt = baseSystemPrompt;
+        if (persona) {
+          systemPrompt = `${baseSystemPrompt}
+
+PERSONA INSTRUCTIONS:
+You are responding as "${persona.name}" (${persona.emoji}) - ${persona.description}
+
+${persona.instructions}
+
+Please respond in character as this persona while being helpful and continuing the conversation thread.`;
+        } else {
+          systemPrompt = `${baseSystemPrompt}
 
 Please provide a helpful response to continue this conversation thread.`;
+        }
 
         console.log("Starting AI text generation...");
+        if (persona) {
+          console.log(`Generating response with persona: ${persona.name} (${persona.emoji})`);
+        }
 
         // Simple text generation - no tools
         const result = await generateText({
-          model: currentModel,
+          model: personaModel || currentModel,
           prompt: systemPrompt,
         });
 
         console.log("AI generation completed, updating memo...");
 
-        // Update the placeholder memo
+        // Update the placeholder memo with persona info
         const response = result.text || "Sorry, I couldn't generate a response.";
         const now = new Date().toISOString();
+        
+        // Add persona metadata to author field if persona is used
+        let authorField = 'assistant';
+        if (persona) {
+          authorField = `assistant:${persona.emoji}:${persona.name}`;
+        }
 
         await this.sql`
           UPDATE memos
-          SET content = ${response}, modified = ${now}
+          SET content = ${response}, modified = ${now}, author = ${authorField}
           WHERE id = ${memo_id}
         `;
 
@@ -1738,6 +1803,127 @@ Return only the summary text, no additional formatting or explanation.`;
           success: false,
           error: error instanceof Error ? error.message : "Internal server error"
         }, { status: 500 });
+      }
+    }
+
+    // Handle emoji personas endpoints
+    if (url.pathname.endsWith("/emoji-personas") && request.method === "GET") {
+      try {
+        // Initialize emoji personas table
+        await this.sql`
+          CREATE TABLE IF NOT EXISTS emoji_personas (
+            id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+            emoji TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            instructions TEXT NOT NULL,
+            model_preference TEXT,
+            created TEXT DEFAULT CURRENT_TIMESTAMP,
+            modified TEXT DEFAULT CURRENT_TIMESTAMP
+          )
+        `;
+
+        const personas = await this.sql`
+          SELECT * FROM emoji_personas ORDER BY created ASC
+        `;
+
+        return Response.json({ success: true, personas });
+      } catch (error) {
+        console.error("Error fetching emoji personas:", error);
+        return Response.json({ success: false, error: error instanceof Error ? error.message : "Internal server error" }, { status: 500 });
+      }
+    }
+
+    if (url.pathname.endsWith("/emoji-personas") && request.method === "POST") {
+      try {
+        const data = await request.json() as {
+          emoji: string;
+          name: string;
+          description: string;
+          instructions: string;
+          model_preference?: string;
+        };
+        const { emoji, name, description, instructions, model_preference } = data;
+
+        if (!emoji || !name || !description || !instructions) {
+          return new Response("Missing required fields", { status: 400 });
+        }
+
+        // Initialize emoji personas table
+        await this.sql`
+          CREATE TABLE IF NOT EXISTS emoji_personas (
+            id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+            emoji TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            instructions TEXT NOT NULL,
+            model_preference TEXT,
+            created TEXT DEFAULT CURRENT_TIMESTAMP,
+            modified TEXT DEFAULT CURRENT_TIMESTAMP
+          )
+        `;
+
+        const now = new Date().toISOString();
+        await this.sql`
+          INSERT INTO emoji_personas (emoji, name, description, instructions, model_preference, created, modified)
+          VALUES (${emoji}, ${name}, ${description}, ${instructions}, ${model_preference || null}, ${now}, ${now})
+        `;
+
+        return Response.json({ success: true, message: "Emoji persona created successfully" });
+      } catch (error) {
+        console.error("Error creating emoji persona:", error);
+        return Response.json({ success: false, error: error instanceof Error ? error.message : "Internal server error" }, { status: 500 });
+      }
+    }
+
+    if (url.pathname.endsWith("/emoji-personas") && request.method === "PUT") {
+      try {
+        const data = await request.json() as {
+          id: string;
+          emoji: string;
+          name: string;
+          description: string;
+          instructions: string;
+          model_preference?: string;
+        };
+        const { id, emoji, name, description, instructions, model_preference } = data;
+
+        if (!id || !emoji || !name || !description || !instructions) {
+          return new Response("Missing required fields", { status: 400 });
+        }
+
+        const now = new Date().toISOString();
+        await this.sql`
+          UPDATE emoji_personas
+          SET emoji = ${emoji}, name = ${name}, description = ${description}, 
+              instructions = ${instructions}, model_preference = ${model_preference || null}, modified = ${now}
+          WHERE id = ${id}
+        `;
+
+        return Response.json({ success: true, message: "Emoji persona updated successfully" });
+      } catch (error) {
+        console.error("Error updating emoji persona:", error);
+        return Response.json({ success: false, error: error instanceof Error ? error.message : "Internal server error" }, { status: 500 });
+      }
+    }
+
+    if (url.pathname.endsWith("/emoji-personas") && request.method === "DELETE") {
+      try {
+        const data = await request.json() as { id: string };
+        const { id } = data;
+
+        if (!id) {
+          return new Response("Missing required fields", { status: 400 });
+        }
+
+        await this.sql`
+          DELETE FROM emoji_personas WHERE id = ${id}
+        `;
+
+        return Response.json({ success: true, message: "Emoji persona deleted successfully" });
+      } catch (error) {
+        console.error("Error deleting emoji persona:", error);
+        return Response.json({ success: false, error: error instanceof Error ? error.message : "Internal server error" }, { status: 500 });
       }
     }
 

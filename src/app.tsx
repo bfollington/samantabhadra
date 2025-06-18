@@ -18,6 +18,7 @@ import { MemosPanel } from "@/components/memos/MemosPanel";
 import { FragmentsPanel } from "@/components/fragments/FragmentsPanel";
 import { FragmentViewer } from "@/components/fragments/FragmentViewer";
 import { ThreadsPanel } from "@/components/threads/ThreadsPanel";
+import { SettingsPanel } from "@/components/settings/SettingsPanel";
 
 // Icon imports
 import {
@@ -29,6 +30,7 @@ import {
   Trash,
   Note,
   Files,
+  Gear,
 } from "@phosphor-icons/react";
 import { useRealtimeSession } from "./hooks/useRealtimeSession";
 
@@ -53,6 +55,7 @@ export default function Chat() {
   const [showDebug, setShowDebug] = useState(false);
   const [showMemos, setShowMemos] = useState(false);
   const [showFragments, setShowFragments] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [viewingFragment, setViewingFragment] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"threads" | "chat" | "fragments">("threads");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -247,34 +250,16 @@ export default function Chat() {
             <Note size={20} />
           </Button>
 
-          <div className="relative ml-2">
-            <Tooltip content={
-              modelSwitchError ? modelSwitchError :
-                !hasAnthropicKey && currentModel === OPENAI_MODEL_NAME ? "Anthropic API key not configured" :
-                  "Switch model"
-            }>
-              <div className={!hasAnthropicKey && currentModel === OPENAI_MODEL_NAME ? "opacity-50 cursor-not-allowed" : ""}>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    if ((currentModel === ANTHROPIC_MODEL_NAME || hasAnthropicKey) && !modelSwitchLoading) {
-                      handleModelChange(currentModel === OPENAI_MODEL_NAME ? ANTHROPIC_MODEL_NAME : OPENAI_MODEL_NAME);
-                    }
-                  }}
-                  className={`flex items-center gap-1 px-2 py-1 text-xs ${modelSwitchError ? "text-red-500" : ""}`}
-                  disabled={((!hasAnthropicKey && currentModel === OPENAI_MODEL_NAME) || modelSwitchLoading)}
-                >
-                  {modelSwitchLoading ? (
-                    <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />
-                  ) : (
-                    <Robot size={16} />
-                  )}
-                  <span>{currentModel === OPENAI_MODEL_NAME ? "GPT-4" : "Claude"}</span>
-                </Button>
-              </div>
-            </Tooltip>
-          </div>
+          <Button
+            variant="ghost"
+            size="md"
+            shape="square"
+            className="rounded-full h-9 w-9"
+            onClick={() => setShowSettings(true)}
+            aria-label="Settings"
+          >
+            <Gear size={20} />
+          </Button>
 
           <Button
             variant="ghost"
@@ -317,6 +302,18 @@ export default function Chat() {
             slug={viewingFragment}
             onClose={handleCloseFragmentViewer}
             onNavigateToFragment={handleNavigateToFragment}
+          />
+        )}
+
+        {/* Settings Panel */}
+        {showSettings && (
+          <SettingsPanel
+            onClose={() => setShowSettings(false)}
+            currentModel={currentModel}
+            hasAnthropicKey={hasAnthropicKey}
+            onModelChange={handleModelChange}
+            modelSwitchLoading={modelSwitchLoading}
+            modelSwitchError={modelSwitchError}
           />
         )}
 

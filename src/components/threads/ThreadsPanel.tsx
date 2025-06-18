@@ -52,6 +52,7 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
   const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null);
   const [addingReaction, setAddingReaction] = useState<string | null>(null);
   const [fallbackReactions, setFallbackReactions] = useState<Map<string, { [emoji: string]: string[] }>>(new Map());
+  const [availableEmojis, setAvailableEmojis] = useState<string[]>(['👍', '❤️', '😂', '😮', '😢', '🤖']);
 
   // Fragment extraction state
   const [extractingFragments, setExtractingFragments] = useState<string | null>(null);
@@ -92,7 +93,28 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
   // Load root memos on mount
   useEffect(() => {
     loadRootMemos();
+    loadPersonaEmojis();
   }, []);
+
+  // Load emoji personas to update available emojis
+  const loadPersonaEmojis = async () => {
+    try {
+      const response = await fetch("/agents/chat/default/emoji-personas");
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          const personaEmojis = data.personas.map((p: any) => p.emoji);
+          const defaultEmojis = ['👍', '❤️', '😂', '😮', '😢', '🤖'];
+          // Combine default emojis with persona emojis, removing duplicates
+          const allEmojis = [...defaultEmojis, ...personaEmojis.filter((emoji: string) => !defaultEmojis.includes(emoji))];
+          setAvailableEmojis(allEmojis);
+        }
+      }
+    } catch (err) {
+      console.error('Error loading persona emojis:', err);
+      // Keep default emojis if loading fails
+    }
+  };
 
   // Load replies when currentMemo changes
   useEffect(() => {
@@ -457,6 +479,88 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
     });
   };
 
+  // Check if an emoji should trigger a persona reaction
+  const checkForPersonaReaction = async (emoji: string, memoId: string) => {
+    // Always check for the classic bot emoji first
+    if (emoji === '🤖') {
+      await triggerPersonaResponse(memoId, emoji);
+      return;
+    }
+
+    // Check if this emoji has a custom persona associated with it
+    try {
+      const response = await fetch("/agents/chat/default/emoji-personas");
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          const persona = data.personas.find((p: any) => p.emoji === emoji);
+          if (persona) {
+            await triggerPersonaResponse(memoId, emoji, persona.id);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error checking for emoji personas:', err);
+    }
+  };
+
+  const triggerPersonaResponse = async (memoId: string, emoji: string, personaId?: string) => {
+    const memo = currentMemo?.id === memoId ? currentMemo :
+      replies.find(r => r.id === memoId) ||
+      rootMemos.find(r => r.id === memoId);
+
+    if (!memo) return;
+
+    setTimeout(async () => {
+      try {
+        // Create placeholder reply
+        const assistantResponse = await fetch("/agents/chat/default/create-reply", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            parent_slug: memo.slug,
+            content: "Thinking...",
+            author: "assistant"
+          }),
+        });
+
+        if (assistantResponse.ok) {
+          const assistantResult = await assistantResponse.json();
+          const memoIdMatch = assistantResult.message?.match(/ID: ([a-f0-9-]+)/);
+
+          if (memoIdMatch) {
+            const assistantMemoId = memoIdMatch[1];
+            
+            // Generate response with persona info
+            const generatePayload: any = { memo_id: assistantMemoId };
+            if (personaId) {
+              generatePayload.persona_id = personaId;
+            } else {
+              generatePayload.emoji = emoji;
+            }
+
+            await fetch("/agents/chat/default/generate-response", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(generatePayload),
+            });
+
+            // Refresh view after AI response
+            setTimeout(async () => {
+              if (currentMemo) {
+                await loadReplies(currentMemo);
+              } else {
+                await loadRootMemos();
+              }
+            }, 1000);
+          }
+        }
+      } catch (err) {
+        console.error('Error creating persona reaction response:', err);
+      }
+    }, 100);
+  };
+
   // Reaction functions
   const addReaction = async (memoId: string, emoji: string) => {
     try {
@@ -504,59 +608,8 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
         // Keep the optimistic update since API isn't available
       }
 
-      // If it's the bot emoji (🤖), trigger agent response
-      if (emoji === '🤖') {
-        const memo = currentMemo?.id === memoId ? currentMemo :
-          replies.find(r => r.id === memoId) ||
-          rootMemos.find(r => r.id === memoId);
-
-        if (memo) {
-          setTimeout(async () => {
-            try {
-              const assistantResponse = await fetch("/agents/chat/default/create-reply", {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  parent_slug: memo.slug,
-                  content: "Thinking...",
-                  author: "assistant"
-                }),
-              });
-
-              if (assistantResponse.ok) {
-                const assistantResult = await assistantResponse.json();
-                const memoIdMatch = assistantResult.message?.match(/ID: ([a-f0-9-]+)/);
-
-                if (memoIdMatch) {
-                  const assistantMemoId = memoIdMatch[1];
-                  await fetch("/agents/chat/default/generate-response", {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({
-                      memo_id: assistantMemoId
-                    }),
-                  });
-
-                  // Refresh view after AI response
-                  setTimeout(async () => {
-                    if (currentMemo) {
-                      await loadReplies(currentMemo);
-                    } else {
-                      await loadRootMemos();
-                    }
-                  }, 1000);
-                }
-              }
-            } catch (err) {
-              console.error('Error creating bot reaction response:', err);
-            }
-          }, 100);
-        }
-      }
+      // Check if this emoji should trigger an AI response
+      await checkForPersonaReaction(emoji, memoId);
     } catch (err) {
       console.error('Error adding reaction:', err);
       setError(err instanceof Error ? err.message : 'Failed to add reaction');
@@ -791,10 +844,40 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
   };
 
   const getAuthorIcon = (author?: string) => {
+    if (author?.startsWith('assistant:')) {
+      // Parse persona info from author field: "assistant:emoji:name"
+      const parts = author.split(':');
+      if (parts.length >= 3) {
+        const emoji = parts[1];
+        const name = parts[2];
+        return (
+          <div className="flex items-center gap-1">
+            <span className="text-lg" title={name}>{emoji}</span>
+            <Robot size={16} className="text-[#F48120]" />
+          </div>
+        );
+      }
+    }
+    
     if (author === 'assistant') {
       return <Robot size={20} className="text-[#F48120]" />;
     }
     return <User size={20} className="text-neutral-600 dark:text-neutral-400" />;
+  };
+
+  const getAuthorName = (author?: string) => {
+    if (author?.startsWith('assistant:')) {
+      // Parse persona info from author field: "assistant:emoji:name"
+      const parts = author.split(':');
+      if (parts.length >= 3) {
+        return parts[2]; // persona name
+      }
+    }
+    
+    if (author === 'assistant') {
+      return 'Assistant';
+    }
+    return 'You';
   };
 
   const truncateContent = (content: string, maxLength: number = 280) => {
@@ -819,7 +902,7 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-2">
               <span className="font-medium text-sm">
-                {memo.author === 'assistant' ? 'Assistant' : 'You'}
+                {getAuthorName(memo.author)}
               </span>
               <span className="text-xs text-neutral-500">
                 {formatTime(memo.created)}
@@ -1001,13 +1084,13 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
 
                         {showReactionPicker === memo.id && (
                           <div className="absolute bottom-full mb-2 left-0 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-xl p-2 flex gap-1 z-50 min-w-max">
-                            {['👍', '❤️', '😂', '😮', '😢', '🤖'].map((emoji) => (
+                            {availableEmojis.map((emoji) => (
                               <button
                                 key={emoji}
                                 onClick={() => addReaction(memo.id, emoji)}
                                 disabled={addingReaction === memo.id}
                                 className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded text-lg transition-colors disabled:opacity-50"
-                                title={emoji === '🤖' ? 'Ask assistant to respond' : undefined}
+                                title={emoji === '🤖' ? 'Ask assistant to respond' : 'React with persona'}
                               >
                                 {emoji}
                               </button>
@@ -1321,7 +1404,7 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
                             <div className="flex items-center gap-2 mb-1">
                               {getAuthorIcon(memo.author)}
                               <span className="text-xs font-medium">
-                                {memo.author === 'assistant' ? 'Assistant' : 'You'}
+                                {getAuthorName(memo.author)}
                               </span>
                               <span className="text-xs text-neutral-500">
                                 {formatTime(memo.created)}
@@ -1424,7 +1507,7 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
                             <div className="flex items-center gap-2 mb-1">
                               {getAuthorIcon(memo.author)}
                               <span className="text-xs font-medium">
-                                {memo.author === 'assistant' ? 'Assistant' : 'You'}
+                                {getAuthorName(memo.author)}
                               </span>
                               <span className="text-xs text-neutral-500">
                                 {formatTime(memo.created)}
@@ -1527,7 +1610,7 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
                             <div className="flex items-center gap-2 mb-1">
                               {getAuthorIcon(memo.author)}
                               <span className="text-xs font-medium">
-                                {memo.author === 'assistant' ? 'Assistant' : 'You'}
+                                {getAuthorName(memo.author)}
                               </span>
                               <span className="text-xs text-neutral-500">
                                 {formatTime(memo.created)}
