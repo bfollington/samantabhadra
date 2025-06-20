@@ -2,7 +2,16 @@ import { Button } from "@/components/button/Button";
 import { Card } from "@/components/card/Card";
 import { TextArea } from "@/components/input/TextArea";
 import { Toggle } from "@/components/toggle/Toggle";
-import { X, PencilSimple, ArrowClockwise, Check, FlowArrow, Play, ArrowRight, Trash } from "@phosphor-icons/react";
+import {
+  X,
+  PencilSimple,
+  ArrowClockwise,
+  Check,
+  FlowArrow,
+  Play,
+  ArrowRight,
+  Trash,
+} from "@phosphor-icons/react";
 import { useState, useEffect, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 
@@ -34,7 +43,12 @@ interface MemoHeaders {
   keywords?: string[];
 }
 
-export function MemoViewer({ memo, onClose, onDelete, allMemos = [] }: MemoViewerProps) {
+export function MemoViewer({
+  memo,
+  onClose,
+  onDelete,
+  allMemos = [],
+}: MemoViewerProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState(memo.content);
   const [saving, setSaving] = useState(false);
@@ -59,7 +73,7 @@ export function MemoViewer({ memo, onClose, onDelete, allMemos = [] }: MemoViewe
   const headers = parseHeaders(currentMemo.headers);
   // Update isWorkflow state based on headers
   useEffect(() => {
-    setIsWorkflow(headers.type === 'workflow');
+    setIsWorkflow(headers.type === "workflow");
   }, [headers]);
 
   // Now we can set up editing state
@@ -91,7 +105,9 @@ export function MemoViewer({ memo, onClose, onDelete, allMemos = [] }: MemoViewe
   const loadBacklinks = useCallback(async () => {
     try {
       setLoadingBacklinks(true);
-      const response = await fetch(`/agents/chat/default/find-backlinks?slug=${currentMemo.slug}&includeContent=true`);
+      const response = await fetch(
+        `/agents/chat/default/find-backlinks?slug=${currentMemo.slug}&includeContent=true`
+      );
 
       if (!response.ok) {
         throw new Error(`Failed to fetch backlinks: ${response.status}`);
@@ -122,9 +138,9 @@ export function MemoViewer({ memo, onClose, onDelete, allMemos = [] }: MemoViewe
       let updatedHeaders: MemoHeaders = {};
       if (editIsWorkflow) {
         updatedHeaders = {
-          type: 'workflow',
+          type: "workflow",
           title: editWorkflowTitle || currentMemo.slug,
-          description: editWorkflowDescription || ''
+          description: editWorkflowDescription || "",
         };
       } else {
         // Preserve other header fields but remove workflow type
@@ -143,7 +159,7 @@ export function MemoViewer({ memo, onClose, onDelete, allMemos = [] }: MemoViewe
           id: currentMemo.id,
           slug: currentMemo.slug,
           content: editedContent,
-          headers: JSON.stringify(updatedHeaders)
+          headers: JSON.stringify(updatedHeaders),
         }),
       });
 
@@ -157,12 +173,12 @@ export function MemoViewer({ memo, onClose, onDelete, allMemos = [] }: MemoViewe
         ...currentMemo,
         content: editedContent,
         headers: newHeaders,
-        modified: new Date().toISOString()
+        modified: new Date().toISOString(),
       });
 
       // Update isWorkflow state based on the new headers
       const newHeadersParsed = parseHeaders(newHeaders);
-      const newIsWorkflow = newHeadersParsed.type === 'workflow';
+      const newIsWorkflow = newHeadersParsed.type === "workflow";
       setIsWorkflow(newIsWorkflow);
       setEditIsWorkflow(newIsWorkflow);
       setEditWorkflowTitle(newHeadersParsed.title || currentMemo.slug);
@@ -211,20 +227,20 @@ export function MemoViewer({ memo, onClose, onDelete, allMemos = [] }: MemoViewe
 
   // Handle checkbox toggles in the markdown
   const handleCheckboxToggle = async (index: number, checked: boolean) => {
-    const lines = editedContent.split('\n');
+    const lines = editedContent.split("\n");
     let checkboxCount = 0;
 
-    const updatedLines = lines.map(line => {
+    const updatedLines = lines.map((line) => {
       if (line.match(/^\s*-\s*\[[ x]\]/i)) {
         if (checkboxCount === index) {
-          return line.replace(/\[[ x]\]/i, checked ? '[x]' : '[ ]');
+          return line.replace(/\[[ x]\]/i, checked ? "[x]" : "[ ]");
         }
         checkboxCount++;
       }
       return line;
     });
 
-    const updatedContent = updatedLines.join('\n');
+    const updatedContent = updatedLines.join("\n");
     setEditedContent(updatedContent);
 
     // If not in edit mode, save the changes immediately
@@ -248,7 +264,11 @@ export function MemoViewer({ memo, onClose, onDelete, allMemos = [] }: MemoViewe
         }
 
         // Update the current memo with the edited content
-        setCurrentMemo({ ...currentMemo, content: updatedContent, modified: new Date().toISOString() });
+        setCurrentMemo({
+          ...currentMemo,
+          content: updatedContent,
+          modified: new Date().toISOString(),
+        });
       } catch (error) {
         console.error("Error saving memo:", error);
       } finally {
@@ -260,11 +280,11 @@ export function MemoViewer({ memo, onClose, onDelete, allMemos = [] }: MemoViewe
   // Navigate to a linked memo (client-side only)
   const navigateToMemo = (slug: string) => {
     // First look in allMemos (from the parent component)
-    let targetMemo = allMemos.find(memo => memo.slug === slug);
+    let targetMemo = allMemos.find((memo) => memo.slug === slug);
 
     // If not found in allMemos, check in backlinks
     if (!targetMemo) {
-      targetMemo = backlinks.find(memo => memo.slug === slug);
+      targetMemo = backlinks.find((memo) => memo.slug === slug);
     }
 
     if (targetMemo) {
@@ -274,7 +294,7 @@ export function MemoViewer({ memo, onClose, onDelete, allMemos = [] }: MemoViewe
 
       // Update workflow state
       const newHeaders = parseHeaders(targetMemo.headers);
-      const newIsWorkflow = newHeaders.type === 'workflow';
+      const newIsWorkflow = newHeaders.type === "workflow";
       setIsWorkflow(newIsWorkflow);
       setEditIsWorkflow(newIsWorkflow);
       setEditWorkflowTitle(newHeaders.title || targetMemo.slug);
@@ -295,9 +315,12 @@ export function MemoViewer({ memo, onClose, onDelete, allMemos = [] }: MemoViewe
   const deleteMemo = async () => {
     try {
       setDeleting(true);
-      const response = await fetch(`/agents/chat/default/delete-memo?id=${currentMemo.id}`, {
-        method: "DELETE",
-      });
+      const response = await fetch(
+        `/agents/chat/default/delete-memo?id=${currentMemo.id}`,
+        {
+          method: "DELETE",
+        }
+      );
 
       if (!response.ok) {
         throw new Error(`Failed to delete memo: ${response.status}`);
@@ -377,7 +400,11 @@ export function MemoViewer({ memo, onClose, onDelete, allMemos = [] }: MemoViewe
                 onClick={saveMemo}
                 disabled={saving}
               >
-                {saving ? <ArrowClockwise size={20} className="animate-spin" /> : <Check size={20} />}
+                {saving ? (
+                  <ArrowClockwise size={20} className="animate-spin" />
+                ) : (
+                  <Check size={20} />
+                )}
               </Button>
             </>
           ) : (
@@ -417,16 +444,24 @@ export function MemoViewer({ memo, onClose, onDelete, allMemos = [] }: MemoViewe
 
       <div className="flex-1 p-4 max-w-3xl mx-auto w-full">
         {isWorkflow && headers.title && (
-          <div className="text-lg text-[#F48120] mb-2 font-medium">{headers.title}</div>
+          <div className="text-lg text-[#F48120] mb-2 font-medium">
+            {headers.title}
+          </div>
         )}
         {isWorkflow && headers.description && (
-          <div className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">{headers.description}</div>
+          <div className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
+            {headers.description}
+          </div>
         )}
         {!isWorkflow && headers.topic && (
-          <div className="text-sm text-[#F48120] mb-4 font-medium">{headers.topic}</div>
+          <div className="text-sm text-[#F48120] mb-4 font-medium">
+            {headers.topic}
+          </div>
         )}
 
-        <Card className={`p-6 mb-6 ${isWorkflow && !isEditing ? 'border-[#F48120]/30' : ''}`}>
+        <Card
+          className={`p-6 mb-6 ${isWorkflow && !isEditing ? "border-[#F48120]/30" : ""}`}
+        >
           {isEditing ? (
             <div className="space-y-4">
               <div className="flex items-center mb-4">
@@ -437,7 +472,10 @@ export function MemoViewer({ memo, onClose, onDelete, allMemos = [] }: MemoViewe
                   checked={editIsWorkflow}
                   onChange={(e) => setEditIsWorkflow(e.target.checked)}
                 />
-                <label htmlFor="editWorkflowToggle" className="text-sm flex items-center cursor-pointer">
+                <label
+                  htmlFor="editWorkflowToggle"
+                  className="text-sm flex items-center cursor-pointer"
+                >
                   <FlowArrow size={14} className="mr-1 text-[#F48120]" />
                   This is a workflow
                 </label>
@@ -446,7 +484,9 @@ export function MemoViewer({ memo, onClose, onDelete, allMemos = [] }: MemoViewe
               {editIsWorkflow && (
                 <div className="space-y-3 mb-4 p-3 bg-[#F48120]/10 dark:bg-[#F48120]/5 rounded-md">
                   <div>
-                    <label className="block text-sm font-medium mb-1">Workflow Title</label>
+                    <label className="block text-sm font-medium mb-1">
+                      Workflow Title
+                    </label>
                     <input
                       type="text"
                       value={editWorkflowTitle}
@@ -457,11 +497,15 @@ export function MemoViewer({ memo, onClose, onDelete, allMemos = [] }: MemoViewe
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium mb-1">Workflow Description</label>
+                    <label className="block text-sm font-medium mb-1">
+                      Workflow Description
+                    </label>
                     <input
                       type="text"
                       value={editWorkflowDescription}
-                      onChange={(e) => setEditWorkflowDescription(e.target.value)}
+                      onChange={(e) =>
+                        setEditWorkflowDescription(e.target.value)
+                      }
                       placeholder="Briefly describe what this workflow does"
                       className="w-full px-3 py-2 border rounded-md bg-neutral-100 dark:bg-neutral-800 border-neutral-300 dark:border-neutral-700"
                     />
@@ -477,18 +521,25 @@ export function MemoViewer({ memo, onClose, onDelete, allMemos = [] }: MemoViewe
               />
             </div>
           ) : (
-            <div className={`prose dark:prose-invert max-w-none ${isWorkflow ? 'workflow-content' : ''}`}>
+            <div
+              className={`prose dark:prose-invert max-w-none ${isWorkflow ? "workflow-content" : ""}`}
+            >
               {isWorkflow && !isEditing && (
                 <div className="mb-4 p-3 bg-[#F48120]/10 dark:bg-[#F48120]/5 rounded-md text-sm">
                   <div className="flex items-center">
                     <FlowArrow size={16} className="text-[#F48120] mr-2" />
-                    <span className="font-medium text-[#F48120]">Workflow Steps</span>
+                    <span className="font-medium text-[#F48120]">
+                      Workflow Steps
+                    </span>
                   </div>
-                  <p className="mt-1 text-neutral-600 dark:text-neutral-400">This is a workflow memo. Click "Execute Workflow" to run these steps.</p>
+                  <p className="mt-1 text-neutral-600 dark:text-neutral-400">
+                    This is a workflow memo. Click "Execute Workflow" to run
+                    these steps.
+                  </p>
                 </div>
               )}
               {/* Process the content for standalone backlinks first */}
-              {currentMemo.content.split('\n').map((line, lineIndex) => {
+              {currentMemo.content.split("\n").map((line, lineIndex) => {
                 // Check if line is just a backlink
                 const standaloneMatch = line.trim().match(/^\[\[(.*?)\]\]$/);
                 if (standaloneMatch) {
@@ -520,7 +571,7 @@ export function MemoViewer({ memo, onClose, onDelete, allMemos = [] }: MemoViewe
                   matches.push({
                     fullMatch: match[0],
                     slug: match[1],
-                    index: match.index
+                    index: match.index,
                   });
                 }
 
@@ -552,87 +603,105 @@ export function MemoViewer({ memo, onClose, onDelete, allMemos = [] }: MemoViewe
                     parts.push(line.substring(lastIndex));
                   }
 
-                  return <p key={`line-${lineIndex}`} className="my-1">{parts}</p>;
+                  return (
+                    <p key={`line-${lineIndex}`} className="my-1">
+                      {parts}
+                    </p>
+                  );
                 }
 
                 // For lines without backlinks, use ReactMarkdown
                 return (
                   <div key={`line-${lineIndex}`}>
-                    <ReactMarkdown components={{
-                      // Custom renderer for text to handle backlinks
-                      text: ({ children }) => {
-                        // Process backlinks
-                        const text = String(children);
-                        const backlinkPattern = /\[\[(.*?)\]\]/g;
-                        const parts: React.ReactNode[] = [];
-                        let lastIndex = 0;
-                        let match;
-                        let matchFound = false;
+                    <ReactMarkdown
+                      components={{
+                        // Custom renderer for text to handle backlinks
+                        text: ({ children }) => {
+                          // Process backlinks
+                          const text = String(children);
+                          const backlinkPattern = /\[\[(.*?)\]\]/g;
+                          const parts: React.ReactNode[] = [];
+                          let lastIndex = 0;
+                          let match;
+                          let matchFound = false;
 
-                        while ((match = backlinkPattern.exec(text)) !== null) {
-                          matchFound = true;
-                          if (match.index > lastIndex) {
-                            parts.push(text.substring(lastIndex, match.index));
+                          while (
+                            (match = backlinkPattern.exec(text)) !== null
+                          ) {
+                            matchFound = true;
+                            if (match.index > lastIndex) {
+                              parts.push(
+                                text.substring(lastIndex, match.index)
+                              );
+                            }
+
+                            const slug = match[1];
+                            parts.push(
+                              <button
+                                key={`${slug}-${match.index}`}
+                                className="text-[#F48120] hover:underline font-medium"
+                                onClick={() => navigateToMemo(slug)}
+                              >
+                                {slug}
+                              </button>
+                            );
+
+                            lastIndex = match.index + match[0].length;
                           }
 
-                          const slug = match[1];
-                          parts.push(
-                            <button
-                              key={`${slug}-${match.index}`}
-                              className="text-[#F48120] hover:underline font-medium"
-                              onClick={() => navigateToMemo(slug)}
-                            >
-                              {slug}
-                            </button>
-                          );
+                          if (lastIndex < text.length) {
+                            parts.push(text.substring(lastIndex));
+                          }
 
-                          lastIndex = match.index + match[0].length;
-                        }
+                          return matchFound ? <>{parts}</> : <>{text}</>;
+                        },
 
-                        if (lastIndex < text.length) {
-                          parts.push(text.substring(lastIndex));
-                        }
+                        // Custom renderer for list items to handle checkboxes
+                        li: (props: any) => {
+                          // Check if this is a checkbox item
+                          const liContent = props.children?.toString() || "";
+                          const checkboxMatch =
+                            liContent.match(/^\[([x ])\]\s*(.*)$/i);
 
-                        return matchFound ? <>{parts}</> : <>{text}</>;
-                      },
+                          if (checkboxMatch) {
+                            const checked =
+                              checkboxMatch[1].toLowerCase() === "x";
+                            const index = document.querySelectorAll(
+                              'input[type="checkbox"]'
+                            ).length;
 
-                      // Custom renderer for list items to handle checkboxes
-                      li: (props: any) => {
-                        // Check if this is a checkbox item
-                        const liContent = props.children?.toString() || '';
-                        const checkboxMatch = liContent.match(/^\[([x ])\]\s*(.*)$/i);
+                            return (
+                              <li className="flex items-start gap-2 my-1">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(e) =>
+                                    handleCheckboxToggle(
+                                      index,
+                                      e.target.checked
+                                    )
+                                  }
+                                  className="mt-1"
+                                />
+                                <span>{checkboxMatch[2]}</span>
+                              </li>
+                            );
+                          }
 
-                        if (checkboxMatch) {
-                          const checked = checkboxMatch[1].toLowerCase() === 'x';
-                          const index = document.querySelectorAll('input[type="checkbox"]').length;
+                          return <li>{props.children}</li>;
+                        },
 
-                          return (
-                            <li className="flex items-start gap-2 my-1">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={(e) => handleCheckboxToggle(index, e.target.checked)}
-                                className="mt-1"
-                              />
-                              <span>{checkboxMatch[2]}</span>
-                            </li>
-                          );
-                        }
-
-                        return <li>{props.children}</li>;
-                      },
-
-                      // Handle paragraphs to ensure they work with our backlink rendering
-                      p: ({ children }) => {
-                        return <p>{children}</p>;
-                      }
-                    }}>
+                        // Handle paragraphs to ensure they work with our backlink rendering
+                        p: ({ children }) => {
+                          return <p>{children}</p>;
+                        },
+                      }}
+                    >
                       {line}
                     </ReactMarkdown>
                   </div>
                 );
               })}
-
             </div>
           )}
         </Card>
@@ -684,18 +753,21 @@ export function MemoViewer({ memo, onClose, onDelete, allMemos = [] }: MemoViewe
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
           <div className="bg-white dark:bg-neutral-900 rounded-lg p-5 max-w-md w-full">
             <h3 className="text-lg font-semibold mb-3">Delete Memo</h3>
-            <p className="mb-4">Are you sure you want to delete "{currentMemo.slug}"? This action cannot be undone.</p>
-            
+            <p className="mb-4">
+              Are you sure you want to delete "{currentMemo.slug}"? This action
+              cannot be undone.
+            </p>
+
             <div className="flex justify-end gap-3">
-              <Button 
-                variant="ghost" 
+              <Button
+                variant="ghost"
                 onClick={() => setShowDeleteConfirm(false)}
                 disabled={deleting}
               >
                 Cancel
               </Button>
-              <Button 
-                variant="destructive" 
+              <Button
+                variant="destructive"
                 onClick={deleteMemo}
                 disabled={deleting}
               >
@@ -704,7 +776,9 @@ export function MemoViewer({ memo, onClose, onDelete, allMemos = [] }: MemoViewe
                     <ArrowClockwise size={16} className="animate-spin mr-2" />
                     Deleting...
                   </>
-                ) : 'Delete'}
+                ) : (
+                  "Delete"
+                )}
               </Button>
             </div>
           </div>

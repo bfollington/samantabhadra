@@ -14,6 +14,7 @@ The AI assistant will automatically suggest creating fragments when you discuss 
 ```
 
 ### Fragment Properties
+
 - **Slug**: URL-friendly unique identifier (e.g., `quantum-entanglement`)
 - **Content**: The actual text of the knowledge
 - **Speaker**: Who said it (user/assistant)
@@ -30,6 +31,7 @@ Create semantic relationships between fragments:
 ```
 
 Common relationship types:
+
 - `example_of` - Concrete instance of abstract concept
 - `abstracts` - General principle from specific case
 - `generalizes_to` - Broader application
@@ -62,6 +64,7 @@ Memos are longer-form notes that can reference multiple fragments and other memo
 ### Memo Structure
 
 Memos support headers for metadata:
+
 - **Type**: Category (note, workflow, reference, etc.)
 - **Title**: Human-readable title
 - **Description**: Brief summary
@@ -178,6 +181,7 @@ Control search precision:
 ## Model Switching
 
 ### Available Models
+
 - **GPT-4o**: OpenAI's latest model (default)
 - **Claude 3.5 Sonnet**: Anthropic's latest model
 
@@ -186,6 +190,7 @@ Control search precision:
 Via UI: Click the model selector in the header
 
 Via conversation:
+
 ```
 "Switch to Claude model"
 "Use GPT-4o for this conversation"
@@ -210,7 +215,7 @@ The system exposes REST endpoints for programmatic access:
 # List fragments
 GET /agents/chat/{id}/list-fragments?limit=10&offset=0
 
-# Search memos semantically  
+# Search memos semantically
 GET /agents/chat/{id}/search-memos-vector?query=quantum+physics
 
 # Get fragment graph

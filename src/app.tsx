@@ -48,7 +48,9 @@ export default function Chat() {
   // Model constants
   const OPENAI_MODEL_NAME = "gpt-4.1-2025-04-14";
   const ANTHROPIC_MODEL_NAME = "claude-sonnet-4-20250514";
-  const [currentModel, setCurrentModel] = useState<typeof OPENAI_MODEL_NAME | typeof ANTHROPIC_MODEL_NAME>(OPENAI_MODEL_NAME);
+  const [currentModel, setCurrentModel] = useState<
+    typeof OPENAI_MODEL_NAME | typeof ANTHROPIC_MODEL_NAME
+  >(OPENAI_MODEL_NAME);
   const [hasAnthropicKey, setHasAnthropicKey] = useState(false);
   const [modelSwitchLoading, setModelSwitchLoading] = useState(false);
   const [modelSwitchError, setModelSwitchError] = useState<string | null>(null);
@@ -57,7 +59,9 @@ export default function Chat() {
   const [showFragments, setShowFragments] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [viewingFragment, setViewingFragment] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"threads" | "chat" | "fragments">("threads");
+  const [activeTab, setActiveTab] = useState<"threads" | "chat" | "fragments">(
+    "threads"
+  );
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback(() => {
@@ -77,10 +81,10 @@ export default function Chat() {
 
   useEffect(() => {
     scrollToBottom();
-    const fragmentSlug = sessionStorage.getItem('openFragmentSlug');
+    const fragmentSlug = sessionStorage.getItem("openFragmentSlug");
     if (fragmentSlug) {
       setViewingFragment(fragmentSlug);
-      sessionStorage.removeItem('openFragmentSlug');
+      sessionStorage.removeItem("openFragmentSlug");
     }
   }, [scrollToBottom]);
 
@@ -97,7 +101,9 @@ export default function Chat() {
     setTheme(newTheme);
   };
 
-  const handleModelChange = async (modelName: typeof OPENAI_MODEL_NAME | typeof ANTHROPIC_MODEL_NAME) => {
+  const handleModelChange = async (
+    modelName: typeof OPENAI_MODEL_NAME | typeof ANTHROPIC_MODEL_NAME
+  ) => {
     setModelSwitchLoading(true);
     setModelSwitchError(null);
 
@@ -138,7 +144,9 @@ export default function Chat() {
           }
         }
 
-        const keyResponse = await fetch("/agents/chat/default/check-anthropic-key");
+        const keyResponse = await fetch(
+          "/agents/chat/default/check-anthropic-key"
+        );
         if (keyResponse.ok) {
           const data = await keyResponse.json();
           setHasAnthropicKey(data.success);
@@ -186,12 +194,19 @@ export default function Chat() {
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
-  const { startSession, stopSession, sendTextMessage, isSessionActive, events, transcription } = useRealtimeSession();
+  const {
+    startSession,
+    stopSession,
+    sendTextMessage,
+    isSessionActive,
+    events,
+    transcription,
+  } = useRealtimeSession();
 
   useEffect(() => {
     if (transcription.length > 0 && isSessionActive) {
       const syntheticEvent = {
-        target: { value: transcription.join(' ') },
+        target: { value: transcription.join(" ") },
       } as React.ChangeEvent<HTMLTextAreaElement>;
 
       handleAgentInputChange(syntheticEvent);
@@ -202,7 +217,6 @@ export default function Chat() {
     <div className="h-[100vh] w-full p-4 flex justify-center items-center bg-fixed overflow-hidden">
       <HasOpenAIKey />
       <div className="h-[calc(100vh-2rem)] w-full mx-auto max-w-lg flex flex-col shadow-xl rounded-md overflow-hidden relative border border-neutral-300 dark:border-neutral-800">
-
         {/* Header */}
         <div className="px-4 py-3 border-b border-neutral-300 dark:border-neutral-800 flex items-center gap-3 sticky top-0 z-10">
           <div className="flex items-center justify-center h-8 w-8">
@@ -328,28 +342,31 @@ export default function Chat() {
             <div className="border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900">
               <div className="flex">
                 <button
-                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "threads"
-                    ? "border-[#F48120] text-[#F48120]"
-                    : "border-transparent text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
-                    }`}
+                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                    activeTab === "threads"
+                      ? "border-[#F48120] text-[#F48120]"
+                      : "border-transparent text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
+                  }`}
                   onClick={() => setActiveTab("threads")}
                 >
                   Threads
                 </button>
                 <button
-                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "chat"
-                    ? "border-[#F48120] text-[#F48120]"
-                    : "border-transparent text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
-                    }`}
+                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                    activeTab === "chat"
+                      ? "border-[#F48120] text-[#F48120]"
+                      : "border-transparent text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
+                  }`}
                   onClick={() => setActiveTab("chat")}
                 >
                   Chat
                 </button>
                 <button
-                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "fragments"
-                    ? "border-[#F48120] text-[#F48120]"
-                    : "border-transparent text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
-                    }`}
+                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                    activeTab === "fragments"
+                      ? "border-[#F48120] text-[#F48120]"
+                      : "border-transparent text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
+                  }`}
                   onClick={() => setActiveTab("fragments")}
                 >
                   Fragments
@@ -393,7 +410,8 @@ export default function Chat() {
 
                   {agentMessages.map((m: Message, index) => {
                     const isUser = m.role === "user";
-                    const showAvatar = index === 0 || agentMessages[index - 1]?.role !== m.role;
+                    const showAvatar =
+                      index === 0 || agentMessages[index - 1]?.role !== m.role;
 
                     return (
                       <div key={m.id}>
@@ -402,8 +420,12 @@ export default function Chat() {
                             {JSON.stringify(m, null, 2)}
                           </pre>
                         )}
-                        <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-                          <div className={`flex gap-2 max-w-[85%] ${isUser ? "flex-row-reverse" : "flex-row"}`}>
+                        <div
+                          className={`flex ${isUser ? "justify-end" : "justify-start"}`}
+                        >
+                          <div
+                            className={`flex gap-2 max-w-[85%] ${isUser ? "flex-row-reverse" : "flex-row"}`}
+                          >
                             {showAvatar && !isUser ? (
                               <Avatar username={"AI"} />
                             ) : (
@@ -417,12 +439,24 @@ export default function Chat() {
                                     return (
                                       <div key={i}>
                                         <Card
-                                          className={`p-3 rounded-md bg-neutral-100 dark:bg-neutral-900 ${isUser ? "rounded-br-none" : "rounded-bl-none border-assistant-border"
-                                            } ${part.text.startsWith("scheduled message") ? "border-accent/50" : ""
-                                            } relative`}
+                                          className={`p-3 rounded-md bg-neutral-100 dark:bg-neutral-900 ${
+                                            isUser
+                                              ? "rounded-br-none"
+                                              : "rounded-bl-none border-assistant-border"
+                                          } ${
+                                            part.text.startsWith(
+                                              "scheduled message"
+                                            )
+                                              ? "border-accent/50"
+                                              : ""
+                                          } relative`}
                                         >
-                                          {part.text.startsWith("scheduled message") && (
-                                            <span className="absolute -top-3 -left-2 text-base">🕒</span>
+                                          {part.text.startsWith(
+                                            "scheduled message"
+                                          ) && (
+                                            <span className="absolute -top-3 -left-2 text-base">
+                                              🕒
+                                            </span>
                                           )}
                                           <span className="text-sm whitespace-pre-wrap">
                                             <ReactMarkdown
@@ -431,21 +465,36 @@ export default function Chat() {
                                                   <p>
                                                     <BacklinkRenderer
                                                       text={String(children)}
-                                                      onNavigateToMemo={(slug) => {
-                                                        setActiveTab("fragments");
-                                                        setViewingFragment(slug);
+                                                      onNavigateToMemo={(
+                                                        slug
+                                                      ) => {
+                                                        setActiveTab(
+                                                          "fragments"
+                                                        );
+                                                        setViewingFragment(
+                                                          slug
+                                                        );
                                                       }}
                                                     />
                                                   </p>
-                                                )
+                                                ),
                                               }}
                                             >
-                                              {part.text.replace(/^scheduled message: /, "")}
+                                              {part.text.replace(
+                                                /^scheduled message: /,
+                                                ""
+                                              )}
                                             </ReactMarkdown>
                                           </span>
                                         </Card>
-                                        <p className={`text-xs text-muted-foreground mt-1 ${isUser ? "text-right" : "text-left"}`}>
-                                          {formatTime(new Date(m.createdAt as unknown as string))}
+                                        <p
+                                          className={`text-xs text-muted-foreground mt-1 ${isUser ? "text-right" : "text-left"}`}
+                                        >
+                                          {formatTime(
+                                            new Date(
+                                              m.createdAt as unknown as string
+                                            )
+                                          )}
                                         </p>
                                       </div>
                                     );
@@ -453,7 +502,8 @@ export default function Chat() {
 
                                   if (part.type === "tool-invocation") {
                                     const toolInvocation = part.toolInvocation;
-                                    const toolCallId = toolInvocation.toolCallId;
+                                    const toolCallId =
+                                      toolInvocation.toolCallId;
 
                                     if (
                                       toolsRequiringConfirmation.includes(
@@ -462,18 +512,32 @@ export default function Chat() {
                                       toolInvocation.state === "call"
                                     ) {
                                       return (
-                                        <Card key={i} className="p-4 my-3 rounded-md bg-neutral-100 dark:bg-neutral-900">
+                                        <Card
+                                          key={i}
+                                          className="p-4 my-3 rounded-md bg-neutral-100 dark:bg-neutral-900"
+                                        >
                                           <div className="flex items-center gap-2 mb-3">
                                             <div className="bg-[#F48120]/10 p-1.5 rounded-full">
-                                              <Robot size={16} className="text-[#F48120]" />
+                                              <Robot
+                                                size={16}
+                                                className="text-[#F48120]"
+                                              />
                                             </div>
-                                            <h4 className="font-medium">{toolInvocation.toolName}</h4>
+                                            <h4 className="font-medium">
+                                              {toolInvocation.toolName}
+                                            </h4>
                                           </div>
 
                                           <div className="mb-3">
-                                            <h5 className="text-xs font-medium mb-1 text-muted-foreground">Arguments:</h5>
+                                            <h5 className="text-xs font-medium mb-1 text-muted-foreground">
+                                              Arguments:
+                                            </h5>
                                             <pre className="bg-background/80 p-2 rounded-md text-xs overflow-auto">
-                                              {JSON.stringify(toolInvocation.args, null, 2)}
+                                              {JSON.stringify(
+                                                toolInvocation.args,
+                                                null,
+                                                2
+                                              )}
                                             </pre>
                                           </div>
 
@@ -565,9 +629,22 @@ export default function Chat() {
                       shape="square"
                       className="rounded-full h-10 w-10 flex-shrink-0"
                       onClick={isSessionActive ? stopSession : startSession}
-                      aria-label={isSessionActive ? "Stop voice session" : "Start voice session"}
+                      aria-label={
+                        isSessionActive
+                          ? "Stop voice session"
+                          : "Start voice session"
+                      }
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="h-5 w-5"
+                      >
                         {isSessionActive ? (
                           <circle cx="12" cy="12" r="10" fill="currentColor" />
                         ) : (
@@ -584,7 +661,9 @@ export default function Chat() {
                       type="submit"
                       shape="square"
                       className="rounded-full h-10 w-10 flex-shrink-0"
-                      disabled={pendingToolCallConfirmation || !agentInput.trim()}
+                      disabled={
+                        pendingToolCallConfirmation || !agentInput.trim()
+                      }
                     >
                       <PaperPlaneRight size={16} />
                     </Button>

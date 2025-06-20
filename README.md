@@ -7,6 +7,7 @@ _The idea is to just chat, sometimes ask to store and search for fragments in pl
 ## What is Samantabhadra?
 
 Samantabhadra is an AI-powered conversational assistant that:
+
 - **Captures knowledge fragments** ("toks") from conversations as atomic units of information
 - **Creates semantic connections** between related concepts using directed, labeled relationships
 - **Builds a personal knowledge graph** that grows with every conversation
@@ -19,6 +20,7 @@ Think of it as a chat interface that remembers everything and builds an evolving
 ## Key Features
 
 ### 🧩 Fragments (Toks)
+
 - Atomic snippets of knowledge extracted from conversations
 - Each fragment has a unique slug, content, speaker, timestamp, and metadata
 - Fragments can be linked with semantic relationships (e.g., "example_of", "abstracts", "generalizes_to")
@@ -26,6 +28,7 @@ Think of it as a chat interface that remembers everything and builds an evolving
 - Automatic vector embedding generation for semantic search
 
 ### 📝 Memos
+
 - Higher-level notes that can reference multiple fragments
 - Support for backlinks using `[[slug]]` syntax
 - Headers for metadata (title, description, type)
@@ -33,6 +36,7 @@ Think of it as a chat interface that remembers everything and builds an evolving
 - Vector embeddings for semantic search
 
 ### 🤖 AI Agent
+
 - Powered by OpenAI GPT-4o or Anthropic Claude models
 - Streaming responses with real-time updates
 - Tool system with human-in-the-loop confirmation for sensitive operations
@@ -40,19 +44,23 @@ Think of it as a chat interface that remembers everything and builds an evolving
 - System prompt optimized for knowledge graph construction
 
 ### 🔧 Workflow System (Ben: this is defunct)
+
 - Save conversation patterns as reusable workflows
 - Execute workflows with parameters
 - List and manage saved workflows
 - Useful for repetitive tasks or complex procedures
 
 ### 🔍 Search & Discovery
+
 - Full-text search across fragments and memos
 - Semantic similarity search using vector embeddings
 - Graph visualization for exploring connections
 - API endpoints for programmatic access
 
 ### 🌐 REST API
+
 The application exposes several REST API endpoints:
+
 - `/list-fragments` - List all fragments with pagination
 - `/fragment?slug=...` - Get a specific fragment by slug
 - `/fragment-graph` - Get the entire fragment graph structure
@@ -90,6 +98,7 @@ GATEWAY_BASE_URL=https://gateway.ai.cloudflare.com/v1/...
 ## Setup & Development
 
 1. Install dependencies:
+
 ```bash
 npm install
 ```
@@ -97,11 +106,13 @@ npm install
 2. Configure environment variables (see above)
 
 3. Run locally:
+
 ```bash
 npm start
 ```
 
 4. Deploy to Cloudflare:
+
 ```bash
 npm run deploy
 ```
@@ -120,9 +131,11 @@ The application uses Cloudflare's Durable Objects for persistent state, SQLite f
 ## Core Concepts
 
 ### Backlink Syntax
+
 Use `[[slug]]` syntax in chat or memo content to create clickable references to other fragments or memos.
 
 ### Knowledge Graph Building
+
 1. Fragments capture atomic facts from conversations
 2. Relationships connect related fragments semantically
 3. Memos provide higher-level synthesis and notes
@@ -130,6 +143,7 @@ Use `[[slug]]` syntax in chat or memo content to create clickable references to 
 5. The graph grows organically through natural conversation
 
 ### Working Principles
+
 - Check for existing knowledge before adding duplicates
 - Use descriptive relationship verbs when linking fragments
 - Keep fragments atomic and memos comprehensive

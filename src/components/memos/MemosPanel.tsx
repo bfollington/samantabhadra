@@ -3,7 +3,13 @@ import { Card } from "@/components/card/Card";
 import { Button } from "@/components/button/Button";
 import { TextArea } from "@/components/input/TextArea";
 import { MemoViewer } from "./MemoViewer";
-import { X, Plus, Check, ArrowClockwise, FlowArrow } from "@phosphor-icons/react";
+import {
+  X,
+  Plus,
+  Check,
+  ArrowClockwise,
+  FlowArrow,
+} from "@phosphor-icons/react";
 import ReactMarkdown from "react-markdown";
 
 interface Memo {
@@ -26,12 +32,12 @@ export function MemosPanel({ onClose }: MemosPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [selectedMemo, setSelectedMemo] = useState<Memo | null>(null);
   const [isCreatingMemo, setIsCreatingMemo] = useState(false);
-  const [newMemoSlug, setNewMemoSlug] = useState('');
-  const [newMemoContent, setNewMemoContent] = useState('');
+  const [newMemoSlug, setNewMemoSlug] = useState("");
+  const [newMemoContent, setNewMemoContent] = useState("");
   const [creatingMemo, setCreatingMemo] = useState(false);
   const [isWorkflow, setIsWorkflow] = useState(false);
-  const [workflowTitle, setWorkflowTitle] = useState('');
-  const [workflowDescription, setWorkflowDescription] = useState('');
+  const [workflowTitle, setWorkflowTitle] = useState("");
+  const [workflowDescription, setWorkflowDescription] = useState("");
 
   // Function to refresh memos list
   const refreshMemos = async () => {
@@ -62,15 +68,17 @@ export function MemosPanel({ onClose }: MemosPanelProps) {
         setMemos(data as Memo[]);
 
         // Check if we need to open a specific memo
-        const openMemoSlug = sessionStorage.getItem('openMemoSlug');
+        const openMemoSlug = sessionStorage.getItem("openMemoSlug");
         if (openMemoSlug) {
           // Find the memo with this slug
-          const memoToOpen = (data as Memo[]).find(memo => memo.slug === openMemoSlug);
+          const memoToOpen = (data as Memo[]).find(
+            (memo) => memo.slug === openMemoSlug
+          );
           if (memoToOpen) {
             setSelectedMemo(memoToOpen);
           }
           // Clear the sessionStorage item so it doesn't persist
-          sessionStorage.removeItem('openMemoSlug');
+          sessionStorage.removeItem("openMemoSlug");
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load memos");
@@ -94,10 +102,10 @@ export function MemosPanel({ onClose }: MemosPanelProps) {
       // Prepare headers based on whether this is a workflow
       const headers = isWorkflow
         ? JSON.stringify({
-          type: 'workflow',
-          title: workflowTitle || newMemoSlug,
-          description: workflowDescription || ''
-        })
+            type: "workflow",
+            title: workflowTitle || newMemoSlug,
+            description: workflowDescription || "",
+          })
         : JSON.stringify({});
 
       const response = await fetch("/agents/chat/default/create-memo", {
@@ -118,22 +126,24 @@ export function MemosPanel({ onClose }: MemosPanelProps) {
 
       // Refresh the memos list
       await refreshMemos();
-      
+
       // Directly fetch the newly created memo
-      const memoResponse = await fetch(`/agents/chat/default/get-memo?slug=${newMemoSlug.trim()}`);
+      const memoResponse = await fetch(
+        `/agents/chat/default/get-memo?slug=${newMemoSlug.trim()}`
+      );
       if (memoResponse.ok) {
-        const newMemo = await memoResponse.json() as Memo;
+        const newMemo = (await memoResponse.json()) as Memo;
         if (newMemo && newMemo.id) {
           setSelectedMemo(newMemo);
         }
       }
 
       // Reset the form
-      setNewMemoSlug('');
-      setNewMemoContent('');
+      setNewMemoSlug("");
+      setNewMemoContent("");
       setIsWorkflow(false);
-      setWorkflowTitle('');
-      setWorkflowDescription('');
+      setWorkflowTitle("");
+      setWorkflowDescription("");
       setIsCreatingMemo(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create memo");
@@ -183,12 +193,14 @@ export function MemosPanel({ onClose }: MemosPanelProps) {
   };
 
   if (selectedMemo) {
-    return <MemoViewer
-      memo={selectedMemo}
-      onClose={() => setSelectedMemo(null)}
-      onDelete={refreshMemos}
-      allMemos={memos}
-    />;
+    return (
+      <MemoViewer
+        memo={selectedMemo}
+        onClose={() => setSelectedMemo(null)}
+        onDelete={refreshMemos}
+        allMemos={memos}
+      />
+    );
   }
 
   return (
@@ -225,7 +237,9 @@ export function MemosPanel({ onClose }: MemosPanelProps) {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Slug (identifier)</label>
+                <label className="block text-sm font-medium mb-1">
+                  Slug (identifier)
+                </label>
                 <input
                   type="text"
                   value={newMemoSlug}
@@ -244,7 +258,10 @@ export function MemosPanel({ onClose }: MemosPanelProps) {
                     setIsWorkflow(e.target.checked);
                   }}
                 />
-                <label htmlFor="workflowToggle" className="text-sm flex items-center cursor-pointer">
+                <label
+                  htmlFor="workflowToggle"
+                  className="text-sm flex items-center cursor-pointer"
+                >
                   <FlowArrow size={14} className="mr-1 text-[#F48120]" />
                   Create as a workflow
                 </label>
@@ -252,7 +269,9 @@ export function MemosPanel({ onClose }: MemosPanelProps) {
 
               {isWorkflow && (
                 <div className="mt-3">
-                  <label className="block text-sm font-medium mb-1">Workflow Title</label>
+                  <label className="block text-sm font-medium mb-1">
+                    Workflow Title
+                  </label>
                   <input
                     type="text"
                     value={workflowTitle}
@@ -261,7 +280,9 @@ export function MemosPanel({ onClose }: MemosPanelProps) {
                     className="w-full px-3 py-2 border rounded-md bg-neutral-100 dark:bg-neutral-800 border-neutral-300 dark:border-neutral-700"
                   />
 
-                  <label className="block text-sm font-medium mb-1 mt-3">Workflow Description</label>
+                  <label className="block text-sm font-medium mb-1 mt-3">
+                    Workflow Description
+                  </label>
                   <input
                     type="text"
                     value={workflowDescription}
@@ -273,7 +294,9 @@ export function MemosPanel({ onClose }: MemosPanelProps) {
               )}
 
               <div>
-                <label className="block text-sm font-medium mb-1">Content</label>
+                <label className="block text-sm font-medium mb-1">
+                  Content
+                </label>
                 <TextArea
                   className="w-full min-h-[200px] bg-neutral-100 dark:bg-neutral-800 border-neutral-300 dark:border-neutral-700 p-3 rounded-md font-mono text-sm"
                   value={newMemoContent}
@@ -288,11 +311,11 @@ export function MemosPanel({ onClose }: MemosPanelProps) {
                   variant="ghost"
                   onClick={() => {
                     setIsCreatingMemo(false);
-                    setNewMemoSlug('');
-                    setNewMemoContent('');
+                    setNewMemoSlug("");
+                    setNewMemoContent("");
                     setIsWorkflow(false);
-                    setWorkflowTitle('');
-                    setWorkflowDescription('');
+                    setWorkflowTitle("");
+                    setWorkflowDescription("");
                   }}
                 >
                   Cancel
@@ -302,9 +325,16 @@ export function MemosPanel({ onClose }: MemosPanelProps) {
                   onClick={createMemo}
                   disabled={!newMemoSlug.trim() || creatingMemo}
                 >
-                  {creatingMemo ?
-                    <><ArrowClockwise size={16} className="animate-spin mr-2" /> Creating...</> :
-                    <><Plus size={16} className="mr-2" /> Create Memo</>}
+                  {creatingMemo ? (
+                    <>
+                      <ArrowClockwise size={16} className="animate-spin mr-2" />{" "}
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={16} className="mr-2" /> Create Memo
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
@@ -327,18 +357,20 @@ export function MemosPanel({ onClose }: MemosPanelProps) {
         )}
 
         {!loading && !error && memos.length === 0 && (
-          <div className="text-center py-12 text-muted-foreground">No memos found</div>
+          <div className="text-center py-12 text-muted-foreground">
+            No memos found
+          </div>
         )}
 
         {!loading && !error && memos.length > 0 && (
           <div className="grid grid-cols-2 gap-4 max-w-5xl mx-auto">
             {memos.map((memo) => {
               const headers = parseHeaders(memo.headers);
-              const isWorkflow = headers.type === 'workflow';
+              const isWorkflow = headers.type === "workflow";
               return (
                 <div
                   key={memo.id}
-                  className={`overflow-hidden flex flex-col hover:shadow-md transition-shadow duration-200 border cursor-pointer rounded-lg ${isWorkflow ? 'border-[#F48120]/50 bg-[#F48120]/5 dark:bg-[#F48120]/10' : 'border-neutral-200 dark:border-neutral-800'}`}
+                  className={`overflow-hidden flex flex-col hover:shadow-md transition-shadow duration-200 border cursor-pointer rounded-lg ${isWorkflow ? "border-[#F48120]/50 bg-[#F48120]/5 dark:bg-[#F48120]/10" : "border-neutral-200 dark:border-neutral-800"}`}
                   onClick={() => setSelectedMemo(memo)}
                 >
                   <div className="p-4 flex-1">
@@ -349,7 +381,9 @@ export function MemosPanel({ onClose }: MemosPanelProps) {
                           Workflow
                         </div>
                       ) : headers.topic ? (
-                        <div className="text-xs text-[#F48120] font-medium">{headers.topic}</div>
+                        <div className="text-xs text-[#F48120] font-medium">
+                          {headers.topic}
+                        </div>
                       ) : (
                         <div></div>
                       )}
@@ -361,26 +395,29 @@ export function MemosPanel({ onClose }: MemosPanelProps) {
                       {isWorkflow && headers.title ? headers.title : memo.slug}
                     </h3>
                     {isWorkflow && headers.description && (
-                      <div className="text-sm mb-2 text-[#F48120]/80">{headers.description}</div>
+                      <div className="text-sm mb-2 text-[#F48120]/80">
+                        {headers.description}
+                      </div>
                     )}
                     <div className="text-sm mb-3 max-h-16 overflow-hidden text-neutral-700 dark:text-neutral-300 prose-sm dark:prose-invert prose">
                       <ReactMarkdown>
                         {memo.content.length > 150
                           ? `${memo.content.slice(0, 150)}...`
-                          : memo.content
-                        }
+                          : memo.content}
                       </ReactMarkdown>
                     </div>
                     {headers.keywords && headers.keywords.length > 0 && (
                       <div className="flex flex-wrap gap-1">
-                        {headers.keywords.map((keyword: string, index: number) => (
-                          <span
-                            key={index}
-                            className="text-xs bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded-full"
-                          >
-                            {keyword}
-                          </span>
-                        ))}
+                        {headers.keywords.map(
+                          (keyword: string, index: number) => (
+                            <span
+                              key={index}
+                              className="text-xs bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded-full"
+                            >
+                              {keyword}
+                            </span>
+                          )
+                        )}
                       </div>
                     )}
                   </div>

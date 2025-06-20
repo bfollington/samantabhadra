@@ -8,9 +8,9 @@ import { z } from "zod";
 import { agentContext } from "./server";
 import type { Chat } from "./server";
 // Import the semantic search tool from dedicated file
-import { semanticSearchMemos } from './semantic-search';
+import { semanticSearchMemos } from "./semantic-search";
 // Import fragment tools for auto-fragment creation
-import { fragmentTools } from './fragment-tools';
+import { fragmentTools } from "./fragment-tools";
 
 // Define memo schema
 export type Memo = {
@@ -18,7 +18,7 @@ export type Memo = {
   slug: string;
   content: string;
   headers: string; // JSON string for headers
-  links: string;   // JSON string for links
+  links: string; // JSON string for links
   created: string; // ISO datetime string
   modified: string; // ISO datetime string
   vector_id?: string; // Reference to vector embedding
@@ -67,37 +67,37 @@ export async function initMemosTableWithAgent(agent: any) {
     try {
       // First try to query using vector_id to see if it exists
       await agent.sql`SELECT vector_id FROM memos LIMIT 1`;
-      console.log('vector_id column already exists');
+      console.log("vector_id column already exists");
     } catch (error) {
       // If error occurs, the column doesn't exist yet, so add it
-      console.log('Adding vector_id column to memos table');
+      console.log("Adding vector_id column to memos table");
       await agent.sql`ALTER TABLE memos ADD COLUMN vector_id TEXT`;
     }
 
     // Check if parent_id column exists, add it if it doesn't
     try {
       await agent.sql`SELECT parent_id FROM memos LIMIT 1`;
-      console.log('parent_id column already exists');
+      console.log("parent_id column already exists");
     } catch (error) {
-      console.log('Adding parent_id column to memos table');
+      console.log("Adding parent_id column to memos table");
       await agent.sql`ALTER TABLE memos ADD COLUMN parent_id TEXT`;
     }
 
     // Check if author column exists, add it if it doesn't
     try {
       await agent.sql`SELECT author FROM memos LIMIT 1`;
-      console.log('author column already exists');
+      console.log("author column already exists");
     } catch (error) {
-      console.log('Adding author column to memos table');
+      console.log("Adding author column to memos table");
       await agent.sql`ALTER TABLE memos ADD COLUMN author TEXT DEFAULT 'user'`;
     }
 
     // Ensure the summary column exists
     try {
       await agent.sql`SELECT summary FROM memos LIMIT 1`;
-      console.log('summary column already exists');
+      console.log("summary column already exists");
     } catch (error) {
-      console.log('Adding summary column to memos table');
+      console.log("Adding summary column to memos table");
       await agent.sql`ALTER TABLE memos ADD COLUMN summary TEXT`;
     }
 
@@ -135,7 +135,7 @@ function extractBacklinks(content: string): string[] {
 
   // Extract unique slugs from the matches
   const links = matches
-    .map(match => match.slice(2, -2).trim()) // Remove [[ and ]]
+    .map((match) => match.slice(2, -2).trim()) // Remove [[ and ]]
     .filter((slug, index, self) => slug && self.indexOf(slug) === index); // Unique non-empty slugs
 
   return links;
@@ -160,7 +160,7 @@ async function updateBacklinks(agent: any, slug: string, content: string) {
   if (currentLinksResult && currentLinksResult.length > 0) {
     try {
       const currentLinks = currentLinksResult[0]?.links;
-      if (currentLinks && typeof currentLinks === 'string') {
+      if (currentLinks && typeof currentLinks === "string") {
         const existingLinks = JSON.parse(currentLinks);
         linksObj.incoming = existingLinks.incoming || [];
       }
@@ -170,7 +170,7 @@ async function updateBacklinks(agent: any, slug: string, content: string) {
   }
 
   // Update the current memo's links
-  if (slug && typeof slug === 'string') {
+  if (slug && typeof slug === "string") {
     const updatedLinksJson = JSON.stringify(linksObj);
     // @ts-ignore - Type safety is manually verified above
     await agent.sql`
@@ -188,7 +188,7 @@ async function updateBacklinks(agent: any, slug: string, content: string) {
     `;
 
     const targetCount = targetExistsResult[0]?.count;
-    if (targetCount && typeof targetCount === 'number' && targetCount > 0) {
+    if (targetCount && typeof targetCount === "number" && targetCount > 0) {
       // Get the current links of the target memo
       const targetLinksResult = await agent.sql`
         SELECT links FROM memos WHERE slug = ${targetSlug}
@@ -205,20 +205,24 @@ async function updateBacklinks(agent: any, slug: string, content: string) {
       try {
         // Get links from the result
         const targetLinksStr = targetLinksResult[0]?.links;
-        if (targetLinksStr && typeof targetLinksStr === 'string') {
+        if (targetLinksStr && typeof targetLinksStr === "string") {
           const parsedLinks = JSON.parse(targetLinksStr);
           targetLinksObj = {
-            incoming: Array.isArray(parsedLinks.incoming) ? parsedLinks.incoming as string[] : [],
-            outgoing: Array.isArray(parsedLinks.outgoing) ? parsedLinks.outgoing as string[] : []
+            incoming: Array.isArray(parsedLinks.incoming)
+              ? (parsedLinks.incoming as string[])
+              : [],
+            outgoing: Array.isArray(parsedLinks.outgoing)
+              ? (parsedLinks.outgoing as string[])
+              : [],
           };
         }
       } catch (e) {
         // If any error, use default structure
-        console.error('Error parsing links:', e);
+        console.error("Error parsing links:", e);
       }
 
       // Add the current slug to incoming links if not already there
-      if (typeof slug === 'string' && !targetLinksObj.incoming.includes(slug)) {
+      if (typeof slug === "string" && !targetLinksObj.incoming.includes(slug)) {
         targetLinksObj.incoming.push(slug);
 
         // Update the target memo's links
@@ -226,7 +230,7 @@ async function updateBacklinks(agent: any, slug: string, content: string) {
         const targetLinksJsonString = JSON.stringify(targetLinksObj);
 
         // Update the database - Use a safer approach to avoid type issues
-        if (targetSlug && typeof targetSlug === 'string') {
+        if (targetSlug && typeof targetSlug === "string") {
           // Use @ts-ignore to bypass the type checker for this one statement
           // since we've already validated the types above
           // @ts-ignore
@@ -250,15 +254,43 @@ async function updateBacklinks(agent: any, slug: string, content: string) {
 const createMemo = tool({
   description: "Create a new memo with the given information",
   parameters: z.object({
-    slug: z.string().describe("A unique identifier for the memo (URL-friendly)"),
+    slug: z
+      .string()
+      .describe("A unique identifier for the memo (URL-friendly)"),
     content: z.string().describe("The content of the memo"),
-    headers: z.string().optional().describe("Optional JSON string of headers metadata"),
-    links: z.string().optional().describe("Optional JSON string of related links"),
-    parent_id: z.string().optional().describe("Optional parent memo ID for threading"),
-    author: z.string().optional().describe("Author of the memo ('user' | 'assistant' | @handle)"),
+    headers: z
+      .string()
+      .optional()
+      .describe("Optional JSON string of headers metadata"),
+    links: z
+      .string()
+      .optional()
+      .describe("Optional JSON string of related links"),
+    parent_id: z
+      .string()
+      .optional()
+      .describe("Optional parent memo ID for threading"),
+    author: z
+      .string()
+      .optional()
+      .describe("Author of the memo ('user' | 'assistant' | @handle)"),
   }),
-  execute: async ({ slug, content, headers = "{}", links = "{}", parent_id = null, author = "user" }) => {
-    console.log("createMemo called with:", { slug, content: content.substring(0, 50) + "...", headers, links, parent_id, author });
+  execute: async ({
+    slug,
+    content,
+    headers = "{}",
+    links = "{}",
+    parent_id = null,
+    author = "user",
+  }) => {
+    console.log("createMemo called with:", {
+      slug,
+      content: content.substring(0, 50) + "...",
+      headers,
+      links,
+      parent_id,
+      author,
+    });
 
     const agent = agentContext.getStore() as Chat | null;
     if (!agent) {
@@ -276,7 +308,7 @@ const createMemo = tool({
 
       const count = existingMemoResult[0]?.count;
       console.log("Existing memo check:", { slug, count });
-      if (count && typeof count === 'number' && count > 0) {
+      if (count && typeof count === "number" && count > 0) {
         return `Error: A memo with the slug '${slug}' already exists.`;
       }
 
@@ -299,13 +331,13 @@ const createMemo = tool({
         vector_id = `memo-${id}`;
         const metadata = {
           memo_id: id,
-          slug: slug
+          slug: slug,
         };
         await agent.storeVectorEmbedding(vector_id, embeddings, metadata);
 
         console.log(`Created vector embedding with ID: ${vector_id}`);
       } catch (error) {
-        console.error('Error generating vector embeddings:', error);
+        console.error("Error generating vector embeddings:", error);
         // Continue even if embedding fails - we'll still create the memo
       }
 
@@ -344,14 +376,19 @@ const createMemo = tool({
             metadata: JSON.stringify({
               auto: true,
               source_memo: slug,
-              source_type: 'memo'
+              source_type: "memo",
             }),
           });
 
-          console.log(`Auto-created fragment '${fragmentSlug}' from memo '${slug}'`);
+          console.log(
+            `Auto-created fragment '${fragmentSlug}' from memo '${slug}'`
+          );
         } catch (err) {
           // Don't fail memo creation if fragment creation fails
-          console.warn(`Failed to auto-create fragment for memo '${slug}':`, err);
+          console.warn(
+            `Failed to auto-create fragment for memo '${slug}':`,
+            err
+          );
         }
       }
 
@@ -373,10 +410,21 @@ const createReply = tool({
   parameters: z.object({
     parent_slug: z.string().describe("The slug of the parent memo to reply to"),
     content: z.string().describe("The content of the reply"),
-    author: z.string().optional().describe("Author of the reply ('user' | 'assistant' | @handle)"),
-    headers: z.string().optional().describe("Optional JSON string of headers metadata"),
+    author: z
+      .string()
+      .optional()
+      .describe("Author of the reply ('user' | 'assistant' | @handle)"),
+    headers: z
+      .string()
+      .optional()
+      .describe("Optional JSON string of headers metadata"),
   }),
-  execute: async ({ parent_slug, content, author = "user", headers = "{}" }) => {
+  execute: async ({
+    parent_slug,
+    content,
+    author = "user",
+    headers = "{}",
+  }) => {
     const agent = agentContext.getStore() as Chat | null;
     if (!agent) {
       throw new Error("No agent found");
@@ -439,12 +487,12 @@ const createReply = tool({
         vector_id = `memo-${id}`;
         const metadata = {
           memo_id: id,
-          slug: replySlug
+          slug: replySlug,
         };
         await agent.storeVectorEmbedding(vector_id, embeddings, metadata);
         console.log(`Created vector embedding with ID: ${vector_id}`);
       } catch (error) {
-        console.error('Error generating vector embeddings:', error);
+        console.error("Error generating vector embeddings:", error);
       }
 
       // Insert the reply memo
@@ -480,14 +528,19 @@ const createReply = tool({
             metadata: JSON.stringify({
               auto: true,
               source_memo: replySlug,
-              source_type: 'memo_reply',
-              parent_memo: parent_slug
+              source_type: "memo_reply",
+              parent_memo: parent_slug,
             }),
           });
 
-          console.log(`Auto-created fragment '${fragmentSlug}' from reply '${replySlug}'`);
+          console.log(
+            `Auto-created fragment '${fragmentSlug}' from reply '${replySlug}'`
+          );
         } catch (err) {
-          console.warn(`Failed to auto-create fragment for reply '${replySlug}':`, err);
+          console.warn(
+            `Failed to auto-create fragment for reply '${replySlug}':`,
+            err
+          );
         }
       }
 
@@ -508,8 +561,14 @@ const editMemo = tool({
   parameters: z.object({
     slug: z.string().describe("The slug of the memo to edit"),
     content: z.string().optional().describe("The new content of the memo"),
-    headers: z.string().optional().describe("Optional JSON string of headers metadata"),
-    links: z.string().optional().describe("Optional JSON string of related links"),
+    headers: z
+      .string()
+      .optional()
+      .describe("Optional JSON string of headers metadata"),
+    links: z
+      .string()
+      .optional()
+      .describe("Optional JSON string of related links"),
   }),
   execute: async ({ slug, content, headers, links }) => {
     const agent = agentContext.getStore() as Chat | null;
@@ -542,23 +601,34 @@ const editMemo = tool({
       if (content !== undefined) {
         try {
           // Get existing vector_id or create a new one
-          const memoId = memo.id && typeof memo.id === 'string' ? memo.id : '';
-          let vector_id = memo.vector_id && typeof memo.vector_id === 'string' ? memo.vector_id : `memo-${memoId}`;
+          const memoId = memo.id && typeof memo.id === "string" ? memo.id : "";
+          let vector_id =
+            memo.vector_id && typeof memo.vector_id === "string"
+              ? memo.vector_id
+              : `memo-${memoId}`;
 
           // Generate new embeddings for the updated content
           // Ensure content is a string
-          const contentToEmbed = typeof updatedContent === 'string' ? updatedContent : String(updatedContent);
+          const contentToEmbed =
+            typeof updatedContent === "string"
+              ? updatedContent
+              : String(updatedContent);
           const embeddings = await agent.createEmbeddings(contentToEmbed);
 
           // Store the updated vector embedding
           const memoMetadata = {
-            memo_id: typeof memo.id === 'string' ? memo.id : '',
-            slug: typeof slug === 'string' ? slug : ''
+            memo_id: typeof memo.id === "string" ? memo.id : "",
+            slug: typeof slug === "string" ? slug : "",
           };
           await agent.storeVectorEmbedding(vector_id, embeddings, memoMetadata);
 
           // Update memo with content and vector_id
-          if (vector_id && typeof vector_id === 'string' && slug && typeof slug === 'string') {
+          if (
+            vector_id &&
+            typeof vector_id === "string" &&
+            slug &&
+            typeof slug === "string"
+          ) {
             // @ts-ignore - Type safety is manually verified above
             await agent.sql`
               UPDATE memos
@@ -572,10 +642,10 @@ const editMemo = tool({
 
           console.log(`Updated vector embedding with ID: ${vector_id}`);
         } catch (error) {
-          console.error('Error updating vector embeddings:', error);
+          console.error("Error updating vector embeddings:", error);
 
           // If embedding fails, still update the content without vector_id
-          if (slug && typeof slug === 'string') {
+          if (slug && typeof slug === "string") {
             // @ts-ignore - Type safety is manually verified above
             await agent.sql`
               UPDATE memos
@@ -589,12 +659,15 @@ const editMemo = tool({
 
         // Process and update backlinks when content changes
         // Ensure slug and content are strings
-        const slugStr = typeof slug === 'string' ? slug : '';
-        const contentStr = typeof updatedContent === 'string' ? updatedContent : String(updatedContent);
+        const slugStr = typeof slug === "string" ? slug : "";
+        const contentStr =
+          typeof updatedContent === "string"
+            ? updatedContent
+            : String(updatedContent);
         const backlinks = await updateBacklinks(agent, slugStr, contentStr);
       } else {
         // If content wasn't updated, just update the other fields
-        if (slug && typeof slug === 'string') {
+        if (slug && typeof slug === "string") {
           // @ts-ignore - Type safety is manually verified above
           await agent.sql`
             UPDATE memos
@@ -678,12 +751,15 @@ const deleteMemo = tool({
 
       // Delete the associated vector embedding if it exists
       const vectorId = memoResult[0]?.vector_id;
-      if (vectorId && typeof vectorId === 'string') {
+      if (vectorId && typeof vectorId === "string") {
         try {
           await agent.deleteVectorEmbedding(vectorId);
           console.log(`Deleted vector embedding with ID: ${vectorId}`);
         } catch (error) {
-          console.error(`Error deleting vector embedding for memo ${slug}:`, error);
+          console.error(
+            `Error deleting vector embedding for memo ${slug}:`,
+            error
+          );
           // Continue with memo deletion even if vector deletion fails
         }
       }
@@ -709,10 +785,16 @@ const searchMemos = tool({
   description: "Search for memos containing specific text in their content",
   parameters: z.object({
     query: z.string().describe("The text to search for in memo content"),
-    limit: z.number().optional().describe("Maximum number of results to return (default: 10)"),
-    field: z.enum(['content', 'slug', 'headers', 'links', 'all']).optional().describe("Field to search in (default: content)"),
+    limit: z
+      .number()
+      .optional()
+      .describe("Maximum number of results to return (default: 10)"),
+    field: z
+      .enum(["content", "slug", "headers", "links", "all"])
+      .optional()
+      .describe("Field to search in (default: content)"),
   }),
-  execute: async ({ query, limit = 10, field = 'content' }) => {
+  execute: async ({ query, limit = 10, field = "content" }) => {
     const agent = agentContext.getStore();
     if (!agent) {
       throw new Error("No agent found");
@@ -723,10 +805,11 @@ const searchMemos = tool({
       await initMemosTable();
 
       // Sanitize the search pattern to prevent SQL injection
-      const searchPattern = '%' + query.replace(/[%_]/g, char => `\\${char}`) + '%';
+      const searchPattern =
+        "%" + query.replace(/[%_]/g, (char) => `\\${char}`) + "%";
 
       let memos;
-      if (field === 'all') {
+      if (field === "all") {
         memos = await agent.sql<Memo>`
           SELECT * FROM memos
           WHERE content LIKE ${searchPattern}
@@ -736,28 +819,29 @@ const searchMemos = tool({
           ORDER BY modified DESC
           LIMIT ${limit}
         `;
-      } else if (field === 'content') {
+      } else if (field === "content") {
         memos = await agent.sql<Memo>`
           SELECT * FROM memos
           WHERE content LIKE ${searchPattern}
           ORDER BY modified DESC
           LIMIT ${limit}
         `;
-      } else if (field === 'slug') {
+      } else if (field === "slug") {
         memos = await agent.sql<Memo>`
           SELECT * FROM memos
           WHERE slug LIKE ${searchPattern}
           ORDER BY modified DESC
           LIMIT ${limit}
         `;
-      } else if (field === 'headers') {
+      } else if (field === "headers") {
         memos = await agent.sql<Memo>`
           SELECT * FROM memos
           WHERE headers LIKE ${searchPattern}
           ORDER BY modified DESC
           LIMIT ${limit}
         `;
-      } else { // links
+      } else {
+        // links
         memos = await agent.sql<Memo>`
           SELECT * FROM memos
           WHERE links LIKE ${searchPattern}
@@ -785,11 +869,20 @@ const searchMemos = tool({
 const listMemos = tool({
   description: "List all memos, optionally limited and sorted",
   parameters: z.object({
-    limit: z.number().optional().describe("Maximum number of memos to return (default: 20)"),
-    sortBy: z.enum(['created', 'modified', 'slug']).optional().describe("Field to sort by (default: modified)"),
-    sortOrder: z.enum(['asc', 'desc']).optional().describe("Sort order (default: desc)"),
+    limit: z
+      .number()
+      .optional()
+      .describe("Maximum number of memos to return (default: 20)"),
+    sortBy: z
+      .enum(["created", "modified", "slug"])
+      .optional()
+      .describe("Field to sort by (default: modified)"),
+    sortOrder: z
+      .enum(["asc", "desc"])
+      .optional()
+      .describe("Sort order (default: desc)"),
   }),
-  execute: async ({ limit = 20, sortBy = 'modified', sortOrder = 'desc' }) => {
+  execute: async ({ limit = 20, sortBy = "modified", sortOrder = "desc" }) => {
     const agent = agentContext.getStore();
     if (!agent) {
       throw new Error("No agent found");
@@ -801,24 +894,30 @@ const listMemos = tool({
 
       // Execute the query with a simple ORDER BY clause using template literals
       let memos;
-      if (sortBy === 'created') {
-        if (sortOrder === 'asc') {
-          memos = await agent.sql<Memo>`SELECT * FROM memos ORDER BY created ASC LIMIT ${limit}`;
+      if (sortBy === "created") {
+        if (sortOrder === "asc") {
+          memos =
+            await agent.sql<Memo>`SELECT * FROM memos ORDER BY created ASC LIMIT ${limit}`;
         } else {
-          memos = await agent.sql<Memo>`SELECT * FROM memos ORDER BY created DESC LIMIT ${limit}`;
+          memos =
+            await agent.sql<Memo>`SELECT * FROM memos ORDER BY created DESC LIMIT ${limit}`;
         }
-      } else if (sortBy === 'slug') {
-        if (sortOrder === 'asc') {
-          memos = await agent.sql<Memo>`SELECT * FROM memos ORDER BY slug ASC LIMIT ${limit}`;
+      } else if (sortBy === "slug") {
+        if (sortOrder === "asc") {
+          memos =
+            await agent.sql<Memo>`SELECT * FROM memos ORDER BY slug ASC LIMIT ${limit}`;
         } else {
-          memos = await agent.sql<Memo>`SELECT * FROM memos ORDER BY slug DESC LIMIT ${limit}`;
+          memos =
+            await agent.sql<Memo>`SELECT * FROM memos ORDER BY slug DESC LIMIT ${limit}`;
         }
       } else {
         // Default to 'modified'
-        if (sortOrder === 'asc') {
-          memos = await agent.sql<Memo>`SELECT * FROM memos ORDER BY modified ASC LIMIT ${limit}`;
+        if (sortOrder === "asc") {
+          memos =
+            await agent.sql<Memo>`SELECT * FROM memos ORDER BY modified ASC LIMIT ${limit}`;
         } else {
-          memos = await agent.sql<Memo>`SELECT * FROM memos ORDER BY modified DESC LIMIT ${limit}`;
+          memos =
+            await agent.sql<Memo>`SELECT * FROM memos ORDER BY modified DESC LIMIT ${limit}`;
         }
       }
 
@@ -841,7 +940,9 @@ const listMemos = tool({
 const queryMemos = tool({
   description: "Execute a custom SQL query on the memos table",
   parameters: z.object({
-    query: z.string().describe("The SQL query to execute (must begin with SELECT for safety)"),
+    query: z
+      .string()
+      .describe("The SQL query to execute (must begin with SELECT for safety)"),
   }),
   execute: async ({ query }) => {
     const agent = agentContext.getStore();
@@ -855,7 +956,7 @@ const queryMemos = tool({
 
       // Simple security check to only allow SELECT queries
       const trimmedQuery = query.trim().toLowerCase();
-      if (!trimmedQuery.startsWith('select')) {
+      if (!trimmedQuery.startsWith("select")) {
         return "Error: Only SELECT queries are allowed for safety reasons.";
       }
 
@@ -866,7 +967,7 @@ const queryMemos = tool({
         const results = await agent.sql(query);
         return results;
       } catch (error: any) {
-        console.error('Error in custom SQL query:', error);
+        console.error("Error in custom SQL query:", error);
         return `Error executing custom query: ${error.message}`;
       }
     } catch (error) {
@@ -884,7 +985,12 @@ const findBacklinks = tool({
   description: "Find all memos that link to a specific memo",
   parameters: z.object({
     slug: z.string().describe("The slug of the memo to find backlinks for"),
-    includeContent: z.boolean().optional().describe("Whether to include the full content of linked memos (default: false)"),
+    includeContent: z
+      .boolean()
+      .optional()
+      .describe(
+        "Whether to include the full content of linked memos (default: false)"
+      ),
   }),
   execute: async ({ slug, includeContent = false }) => {
     const agent = agentContext.getStore();
@@ -925,18 +1031,18 @@ const findBacklinks = tool({
       if (includeContent) {
         contentLinkedMemos = await agent.sql<Memo>`
           SELECT * FROM memos
-          WHERE content LIKE ${'%[[' + slug + ']]%'}
+          WHERE content LIKE ${"%[[" + slug + "]]%"}
         `;
       } else {
         contentLinkedMemos = await agent.sql<Memo>`
           SELECT id, slug, created, modified FROM memos
-          WHERE content LIKE ${'%[[' + slug + ']]%'}
+          WHERE content LIKE ${"%[[" + slug + "]]%"}
         `;
       }
 
       // Combine results and remove duplicates
       const allMemos = [...linkedMemos];
-      const existingSlugs = new Set(allMemos.map(memo => memo.slug));
+      const existingSlugs = new Set(allMemos.map((memo) => memo.slug));
 
       for (const memo of contentLinkedMemos) {
         if (!existingSlugs.has(memo.slug)) {

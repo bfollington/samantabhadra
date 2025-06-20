@@ -36,28 +36,28 @@ The project uses the following Cloudflare services configured in `wrangler.jsonc
   "compatibility_date": "2025-02-04",
   "compatibility_flags": [
     "nodejs_compat",
-    "nodejs_compat_populate_process_env"
+    "nodejs_compat_populate_process_env",
   ],
   "vars": {
-    "HOST": "https://samantabhadra.bfollington.workers.dev/"
+    "HOST": "https://samantabhadra.bfollington.workers.dev/",
   },
   "vectorize": [
     {
       "binding": "VECTORIZE",
-      "index_name": "embeddings-index"
-    }
+      "index_name": "embeddings-index",
+    },
   ],
   "ai": {
-    "binding": "AI"
+    "binding": "AI",
   },
   "durable_objects": {
     "bindings": [
       {
         "name": "Chat",
-        "class_name": "Chat"
-      }
-    ]
-  }
+        "class_name": "Chat",
+      },
+    ],
+  },
 }
 ```
 
@@ -81,6 +81,7 @@ wrangler vectorize create embeddings-index --dimensions=768 --metric=cosine
 ### 2. Set Environment Variables
 
 For local development:
+
 ```bash
 # Create .dev.vars file
 cp .dev.vars.example .dev.vars
@@ -88,6 +89,7 @@ cp .dev.vars.example .dev.vars
 ```
 
 For production:
+
 ```bash
 # Set secrets using wrangler
 wrangler secret put OPENAI_API_KEY
@@ -159,6 +161,7 @@ To use a custom domain:
 ### Vectorize Index Settings
 
 The default configuration uses:
+
 - **Dimensions**: 768 (BGE model output)
 - **Metric**: Cosine similarity
 - **Namespace**: Default
@@ -192,11 +195,13 @@ To use Cloudflare AI Gateway for caching and rate limiting:
 ### Memory and Performance Tuning
 
 Durable Objects have the following limits:
+
 - **Memory**: 128MB per instance
 - **CPU**: 30 seconds per request
 - **Storage**: 10GB SQLite per DO
 
 For large knowledge graphs, consider:
+
 - Implementing data archival strategies
 - Using multiple DO instances with sharding
 - Optimizing vector search with pre-filtering
@@ -220,6 +225,7 @@ const DEBUG = true;
 ```
 
 This will log:
+
 - SQL queries
 - Vector operations
 - API calls

@@ -2,7 +2,21 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/button/Button";
 import { TextArea } from "@/components/input/TextArea";
 import { useRealtimeSession } from "@/hooks/useRealtimeSession";
-import { X, Plus, ChatCircle, User, Robot, ArrowLeft, PaperPlaneTilt, PencilSimple, Trash, Check, XCircle, Smiley, Graph } from "@phosphor-icons/react";
+import {
+  X,
+  Plus,
+  ChatCircle,
+  User,
+  Robot,
+  ArrowLeft,
+  PaperPlaneTilt,
+  PencilSimple,
+  Trash,
+  Check,
+  XCircle,
+  Smiley,
+  Graph,
+} from "@phosphor-icons/react";
 
 interface Memo {
   id: string;
@@ -35,43 +49,66 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
 
   // Composer state
   const [showComposer, setShowComposer] = useState(false);
-  const [replyContent, setReplyContent] = useState('');
+  const [replyContent, setReplyContent] = useState("");
   const [composerParent, setComposerParent] = useState<Memo | null>(null);
   const [creatingReply, setCreatingReply] = useState(false);
 
   // Edit/Delete state
   const [editingMemoId, setEditingMemoId] = useState<string | null>(null);
-  const [editingContent, setEditingContent] = useState('');
+  const [editingContent, setEditingContent] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingMemoId, setDeletingMemoId] = useState<string | null>(null);
 
   // Reply counts state
-  const [replyCounts, setReplyCounts] = useState<Map<string, number>>(new Map());
+  const [replyCounts, setReplyCounts] = useState<Map<string, number>>(
+    new Map()
+  );
 
   // Reactions state
-  const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null);
+  const [showReactionPicker, setShowReactionPicker] = useState<string | null>(
+    null
+  );
   const [addingReaction, setAddingReaction] = useState<string | null>(null);
-  const [fallbackReactions, setFallbackReactions] = useState<Map<string, { [emoji: string]: string[] }>>(new Map());
-  const [availableEmojis, setAvailableEmojis] = useState<string[]>(['👍', '❤️', '😂', '😮', '😢', '🤖']);
+  const [fallbackReactions, setFallbackReactions] = useState<
+    Map<string, { [emoji: string]: string[] }>
+  >(new Map());
+  const [availableEmojis, setAvailableEmojis] = useState<string[]>([
+    "👍",
+    "❤️",
+    "😂",
+    "😮",
+    "😢",
+    "🤖",
+  ]);
 
   // Fragment extraction state
-  const [extractingFragments, setExtractingFragments] = useState<string | null>(null);
+  const [extractingFragments, setExtractingFragments] = useState<string | null>(
+    null
+  );
 
   // Summary generation state
-  const [generatingSummary, setGeneratingSummary] = useState<string | null>(null);
+  const [generatingSummary, setGeneratingSummary] = useState<string | null>(
+    null
+  );
 
   // Related content state
-  const [showRelatedContent, setShowRelatedContent] = useState<string | null>(null);
-  const [relatedContent, setRelatedContent] = useState<{ memos: Memo[], fragments: any[] }>({ memos: [], fragments: [] });
+  const [showRelatedContent, setShowRelatedContent] = useState<string | null>(
+    null
+  );
+  const [relatedContent, setRelatedContent] = useState<{
+    memos: Memo[];
+    fragments: any[];
+  }>({ memos: [], fragments: [] });
   const [loadingRelated, setLoadingRelated] = useState(false);
 
   // Voice transcription
-  const { startSession, stopSession, isSessionActive, transcription } = useRealtimeSession();
+  const { startSession, stopSession, isSessionActive, transcription } =
+    useRealtimeSession();
 
   // Handle voice transcription updates
   useEffect(() => {
     if (transcription.length > 0 && isSessionActive) {
-      const transcribedText = transcription.join(' ');
+      const transcribedText = transcription.join(" ");
       setReplyContent(transcribedText);
     }
   }, [transcription, isSessionActive]);
@@ -79,14 +116,18 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
   // Click outside handler for reaction picker
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (showReactionPicker && !(event.target as Element).closest('.reaction-picker-container')) {
+      if (
+        showReactionPicker &&
+        !(event.target as Element).closest(".reaction-picker-container")
+      ) {
         setShowReactionPicker(null);
       }
     };
 
     if (showReactionPicker) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
+      document.addEventListener("mousedown", handleClickOutside);
+      return () =>
+        document.removeEventListener("mousedown", handleClickOutside);
     }
   }, [showReactionPicker]);
 
@@ -104,14 +145,19 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
         const data = await response.json();
         if (data.success) {
           const personaEmojis = data.personas.map((p: any) => p.emoji);
-          const defaultEmojis = ['👍', '❤️', '😂', '😮', '😢', '🤖'];
+          const defaultEmojis = ["👍", "❤️", "😂", "😮", "😢", "🤖"];
           // Combine default emojis with persona emojis, removing duplicates
-          const allEmojis = [...defaultEmojis, ...personaEmojis.filter((emoji: string) => !defaultEmojis.includes(emoji))];
+          const allEmojis = [
+            ...defaultEmojis,
+            ...personaEmojis.filter(
+              (emoji: string) => !defaultEmojis.includes(emoji)
+            ),
+          ];
           setAvailableEmojis(allEmojis);
         }
       }
     } catch (err) {
-      console.error('Error loading persona emojis:', err);
+      console.error("Error loading persona emojis:", err);
       // Keep default emojis if loading fails
     }
   };
@@ -128,20 +174,22 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
       setLoading(true);
       setError(null);
 
-      const response = await fetch("/agents/chat/default/list-memos?sortBy=modified&sortOrder=desc&limit=50");
+      const response = await fetch(
+        "/agents/chat/default/list-memos?sortBy=modified&sortOrder=desc&limit=50"
+      );
       if (!response.ok) {
         throw new Error(`Failed to fetch memos: ${response.status}`);
       }
 
-      const allMemos = await response.json() as Memo[];
+      const allMemos = (await response.json()) as Memo[];
       const rootMemos = allMemos.filter((memo: Memo) => !memo.parent_id);
       setRootMemos(rootMemos);
 
       // Load reply counts for root memos
       await loadReplyCounts(rootMemos, allMemos);
     } catch (err) {
-      console.error('Error fetching root memos:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load memos');
+      console.error("Error fetching root memos:", err);
+      setError(err instanceof Error ? err.message : "Failed to load memos");
     } finally {
       setLoading(false);
     }
@@ -149,33 +197,39 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
 
   const loadReplies = async (memo: Memo) => {
     try {
-      const response = await fetch("/agents/chat/default/list-memos?sortBy=created&sortOrder=asc&limit=100");
+      const response = await fetch(
+        "/agents/chat/default/list-memos?sortBy=created&sortOrder=asc&limit=100"
+      );
       if (!response.ok) {
         throw new Error(`Failed to fetch replies: ${response.status}`);
       }
 
-      const allMemos = await response.json() as Memo[];
-      const directReplies = allMemos.filter((m: Memo) => m.parent_id === memo.id);
+      const allMemos = (await response.json()) as Memo[];
+      const directReplies = allMemos.filter(
+        (m: Memo) => m.parent_id === memo.id
+      );
       setReplies(directReplies);
 
       // Load reply counts for the current replies
       await loadReplyCounts(directReplies, allMemos);
     } catch (err) {
-      console.error('Error fetching replies:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load replies');
+      console.error("Error fetching replies:", err);
+      setError(err instanceof Error ? err.message : "Failed to load replies");
     }
   };
 
   const navigateToMemo = async (memo: Memo) => {
     // Load full thread context to ensure we have all parent memos
     try {
-      const threadResponse = await fetch(`/agents/chat/default/thread?slug=${encodeURIComponent(memo.slug)}`);
+      const threadResponse = await fetch(
+        `/agents/chat/default/thread?slug=${encodeURIComponent(memo.slug)}`
+      );
       if (threadResponse.ok) {
         const thread = await threadResponse.json();
         setAllThreadMemos(thread.memos || []);
       }
     } catch (error) {
-      console.error('Error loading full thread context:', error);
+      console.error("Error loading full thread context:", error);
     }
 
     setCurrentMemo(memo);
@@ -188,7 +242,7 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
 
     // Walk up the parent chain to build history using full thread context
     while (current.parent_id) {
-      const parent = allThreadMemos.find(m => m.id === current.parent_id);
+      const parent = allThreadMemos.find((m) => m.id === current.parent_id);
       if (parent) {
         history.unshift(parent);
         current = parent;
@@ -210,12 +264,12 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
   const openComposer = (parentMemo: Memo | null = null) => {
     setComposerParent(parentMemo || currentMemo);
     setShowComposer(true);
-    setReplyContent('');
+    setReplyContent("");
   };
 
   const closeComposer = () => {
     setShowComposer(false);
-    setReplyContent('');
+    setReplyContent("");
     setComposerParent(null);
   };
 
@@ -238,17 +292,19 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
           body: JSON.stringify({
             parent_slug: composerParent.slug,
             content: replyContent,
-            author: "user"
+            author: "user",
           }),
         });
 
         if (!response.ok) {
           const errorText = await response.text();
-          throw new Error(`Failed to create reply: ${response.status} - ${errorText}`);
+          throw new Error(
+            `Failed to create reply: ${response.status} - ${errorText}`
+          );
         }
 
         result = await response.json();
-        console.log('Reply created:', result);
+        console.log("Reply created:", result);
 
         // Extract reply ID from result for fragment extraction
         const replyIdMatch = result.message?.match(/ID: ([a-f0-9-]+)/);
@@ -262,31 +318,38 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
         generateThreadSummary(composerParent.slug);
 
         // Auto-trigger agent response when replying to assistant OR if mentions agent
-        const shouldTriggerAgent = composerParent.author === 'assistant' ||
-          replyContent.includes('@sam') ||
-          replyContent.includes('@agent');
+        const shouldTriggerAgent =
+          composerParent.author === "assistant" ||
+          replyContent.includes("@sam") ||
+          replyContent.includes("@agent");
 
         if (shouldTriggerAgent) {
           const userReplySlugMatch = result.message?.match(/slug: ([^\s]+)/);
-          const userReplySlug = userReplySlugMatch ? userReplySlugMatch[1] : composerParent.slug;
+          const userReplySlug = userReplySlugMatch
+            ? userReplySlugMatch[1]
+            : composerParent.slug;
 
           setTimeout(async () => {
             try {
-              const assistantResponse = await fetch("/agents/chat/default/create-reply", {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  parent_slug: userReplySlug,
-                  content: "Thinking...",
-                  author: "assistant"
-                }),
-              });
+              const assistantResponse = await fetch(
+                "/agents/chat/default/create-reply",
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    parent_slug: userReplySlug,
+                    content: "Thinking...",
+                    author: "assistant",
+                  }),
+                }
+              );
 
               if (assistantResponse.ok) {
                 const assistantResult = await assistantResponse.json();
-                const memoIdMatch = assistantResult.message?.match(/ID: ([a-f0-9-]+)/);
+                const memoIdMatch =
+                  assistantResult.message?.match(/ID: ([a-f0-9-]+)/);
 
                 if (memoIdMatch) {
                   const assistantMemoId = memoIdMatch[1];
@@ -296,7 +359,7 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
                       "Content-Type": "application/json",
                     },
                     body: JSON.stringify({
-                      memo_id: assistantMemoId
+                      memo_id: assistantMemoId,
                     }),
                   });
 
@@ -311,19 +374,20 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
                 }
               }
             } catch (err) {
-              console.error('Error creating assistant reply:', err);
+              console.error("Error creating assistant reply:", err);
             }
           }, 100);
         }
       } else {
         // Creating a new root memo
-        const slug = replyContent
-          .toLowerCase()
-          .replace(/[^a-z0-9\s]/g, "")
-          .trim()
-          .split(/\s+/)
-          .slice(0, 6)
-          .join("-") || `memo-${Date.now()}`;
+        const slug =
+          replyContent
+            .toLowerCase()
+            .replace(/[^a-z0-9\s]/g, "")
+            .trim()
+            .split(/\s+/)
+            .slice(0, 6)
+            .join("-") || `memo-${Date.now()}`;
 
         response = await fetch("/agents/chat/default/create-memo", {
           method: "POST",
@@ -334,17 +398,19 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
             slug,
             content: replyContent,
             author: "user",
-            headers: JSON.stringify({})
+            headers: JSON.stringify({}),
           }),
         });
 
         if (!response.ok) {
           const errorText = await response.text();
-          throw new Error(`Failed to create memo: ${response.status} - ${errorText}`);
+          throw new Error(
+            `Failed to create memo: ${response.status} - ${errorText}`
+          );
         }
 
         result = await response.json();
-        console.log('New memo created:', result);
+        console.log("New memo created:", result);
 
         // Generate summary for new root memo
         const newMemoSlugMatch = result.message?.match(/slug: ([^\s]+)/);
@@ -363,8 +429,10 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
         await loadRootMemos();
       }
     } catch (err) {
-      console.error('Error creating memo/reply:', err);
-      setError(err instanceof Error ? err.message : 'Failed to create memo/reply');
+      console.error("Error creating memo/reply:", err);
+      setError(
+        err instanceof Error ? err.message : "Failed to create memo/reply"
+      );
     } finally {
       setCreatingReply(false);
     }
@@ -378,7 +446,7 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
 
   const cancelEdit = () => {
     setEditingMemoId(null);
-    setEditingContent('');
+    setEditingContent("");
   };
 
   const saveEditMemo = async () => {
@@ -389,12 +457,14 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
       setError(null);
 
       // Find the memo being edited
-      const memoToEdit = currentMemo?.id === editingMemoId ? currentMemo :
-        replies.find(r => r.id === editingMemoId) ||
-        rootMemos.find(r => r.id === editingMemoId);
+      const memoToEdit =
+        currentMemo?.id === editingMemoId
+          ? currentMemo
+          : replies.find((r) => r.id === editingMemoId) ||
+            rootMemos.find((r) => r.id === editingMemoId);
 
       if (!memoToEdit) {
-        throw new Error('Memo not found');
+        throw new Error("Memo not found");
       }
 
       const response = await fetch("/agents/chat/default/edit-memo", {
@@ -411,12 +481,14 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Failed to edit memo: ${response.status} - ${errorText}`);
+        throw new Error(
+          `Failed to edit memo: ${response.status} - ${errorText}`
+        );
       }
 
       // Reset editing state
       setEditingMemoId(null);
-      setEditingContent('');
+      setEditingContent("");
 
       // Refresh current view
       if (currentMemo) {
@@ -425,8 +497,8 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
         await loadRootMemos();
       }
     } catch (err) {
-      console.error('Error editing memo:', err);
-      setError(err instanceof Error ? err.message : 'Failed to edit memo');
+      console.error("Error editing memo:", err);
+      setError(err instanceof Error ? err.message : "Failed to edit memo");
     } finally {
       setSavingEdit(false);
     }
@@ -437,13 +509,18 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
       setDeletingMemoId(memo.id);
       setError(null);
 
-      const response = await fetch(`/agents/chat/default/delete-memo?id=${encodeURIComponent(memo.id)}`, {
-        method: "DELETE",
-      });
+      const response = await fetch(
+        `/agents/chat/default/delete-memo?id=${encodeURIComponent(memo.id)}`,
+        {
+          method: "DELETE",
+        }
+      );
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Failed to delete memo: ${response.status} - ${errorText}`);
+        throw new Error(
+          `Failed to delete memo: ${response.status} - ${errorText}`
+        );
       }
 
       // Refresh current view
@@ -453,8 +530,8 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
         await loadRootMemos();
       }
     } catch (err) {
-      console.error('Error deleting memo:', err);
-      setError(err instanceof Error ? err.message : 'Failed to delete memo');
+      console.error("Error deleting memo:", err);
+      setError(err instanceof Error ? err.message : "Failed to delete memo");
     } finally {
       setDeletingMemoId(null);
     }
@@ -464,13 +541,13 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
   const loadReplyCounts = async (memos: Memo[], allMemos: Memo[]) => {
     const counts = new Map<string, number>();
 
-    memos.forEach(memo => {
+    memos.forEach((memo) => {
       // Count direct replies for this memo
-      const directReplies = allMemos.filter(m => m.parent_id === memo.id);
+      const directReplies = allMemos.filter((m) => m.parent_id === memo.id);
       counts.set(memo.id, directReplies.length);
     });
 
-    setReplyCounts(prevCounts => {
+    setReplyCounts((prevCounts) => {
       const newCounts = new Map(prevCounts);
       counts.forEach((count, id) => {
         newCounts.set(id, count);
@@ -482,7 +559,7 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
   // Check if an emoji should trigger a persona reaction
   const checkForPersonaReaction = async (emoji: string, memoId: string) => {
     // Always check for the classic bot emoji first
-    if (emoji === '🤖') {
+    if (emoji === "🤖") {
       await triggerPersonaResponse(memoId, emoji);
       return;
     }
@@ -500,37 +577,47 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
         }
       }
     } catch (err) {
-      console.error('Error checking for emoji personas:', err);
+      console.error("Error checking for emoji personas:", err);
     }
   };
 
-  const triggerPersonaResponse = async (memoId: string, emoji: string, personaId?: string) => {
-    const memo = currentMemo?.id === memoId ? currentMemo :
-      replies.find(r => r.id === memoId) ||
-      rootMemos.find(r => r.id === memoId);
+  const triggerPersonaResponse = async (
+    memoId: string,
+    emoji: string,
+    personaId?: string
+  ) => {
+    const memo =
+      currentMemo?.id === memoId
+        ? currentMemo
+        : replies.find((r) => r.id === memoId) ||
+          rootMemos.find((r) => r.id === memoId);
 
     if (!memo) return;
 
     setTimeout(async () => {
       try {
         // Create placeholder reply
-        const assistantResponse = await fetch("/agents/chat/default/create-reply", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            parent_slug: memo.slug,
-            content: "Thinking...",
-            author: "assistant"
-          }),
-        });
+        const assistantResponse = await fetch(
+          "/agents/chat/default/create-reply",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              parent_slug: memo.slug,
+              content: "Thinking...",
+              author: "assistant",
+            }),
+          }
+        );
 
         if (assistantResponse.ok) {
           const assistantResult = await assistantResponse.json();
-          const memoIdMatch = assistantResult.message?.match(/ID: ([a-f0-9-]+)/);
+          const memoIdMatch =
+            assistantResult.message?.match(/ID: ([a-f0-9-]+)/);
 
           if (memoIdMatch) {
             const assistantMemoId = memoIdMatch[1];
-            
+
             // Generate response with persona info
             const generatePayload: any = { memo_id: assistantMemoId };
             if (personaId) {
@@ -556,7 +643,7 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
           }
         }
       } catch (err) {
-        console.error('Error creating persona reaction response:', err);
+        console.error("Error creating persona reaction response:", err);
       }
     }, 100);
   };
@@ -567,7 +654,7 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
       setAddingReaction(memoId);
 
       // Optimistic update - add reaction immediately
-      setFallbackReactions(prev => {
+      setFallbackReactions((prev) => {
         const newReactions = new Map(prev);
         const memoReactions = newReactions.get(memoId) || {};
         const existingUsers = memoReactions[emoji] || [];
@@ -589,7 +676,7 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
           body: JSON.stringify({
             memo_id: memoId,
             emoji: emoji,
-            user_id: "user" // In a real app, this would be the current user's ID
+            user_id: "user", // In a real app, this would be the current user's ID
           }),
         });
 
@@ -604,15 +691,15 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
           await loadRootMemos();
         }
       } catch (apiError) {
-        console.log('API not available, keeping optimistic update');
+        console.log("API not available, keeping optimistic update");
         // Keep the optimistic update since API isn't available
       }
 
       // Check if this emoji should trigger an AI response
       await checkForPersonaReaction(emoji, memoId);
     } catch (err) {
-      console.error('Error adding reaction:', err);
-      setError(err instanceof Error ? err.message : 'Failed to add reaction');
+      console.error("Error adding reaction:", err);
+      setError(err instanceof Error ? err.message : "Failed to add reaction");
     } finally {
       setAddingReaction(null);
       setShowReactionPicker(null);
@@ -622,12 +709,12 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
   const removeReaction = async (memoId: string, emoji: string) => {
     try {
       // Optimistic update - remove reaction immediately
-      setFallbackReactions(prev => {
+      setFallbackReactions((prev) => {
         const newReactions = new Map(prev);
         const memoReactions = newReactions.get(memoId) || {};
         const existingUsers = memoReactions[emoji] || [];
 
-        memoReactions[emoji] = existingUsers.filter(user => user !== "user");
+        memoReactions[emoji] = existingUsers.filter((user) => user !== "user");
         if (memoReactions[emoji].length === 0) {
           delete memoReactions[emoji];
         }
@@ -645,7 +732,7 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
           body: JSON.stringify({
             memo_id: memoId,
             emoji: emoji,
-            user_id: "user"
+            user_id: "user",
           }),
         });
 
@@ -660,19 +747,22 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
           await loadRootMemos();
         }
       } catch (apiError) {
-        console.log('API not available, keeping optimistic update');
+        console.log("API not available, keeping optimistic update");
         // Keep the optimistic update since API isn't available
       }
     } catch (err) {
-      console.error('Error removing reaction:', err);
-      setError(err instanceof Error ? err.message : 'Failed to remove reaction');
+      console.error("Error removing reaction:", err);
+      setError(
+        err instanceof Error ? err.message : "Failed to remove reaction"
+      );
     }
   };
 
   const hasUserReacted = (memo: Memo, emoji: string) => {
     // Check API data first, then fallback data
     const apiReaction = memo.reactions?.[emoji]?.includes("user") || false;
-    const fallbackReaction = fallbackReactions.get(memo.id)?.[emoji]?.includes("user") || false;
+    const fallbackReaction =
+      fallbackReactions.get(memo.id)?.[emoji]?.includes("user") || false;
     return apiReaction || fallbackReaction;
   };
 
@@ -704,26 +794,29 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
       setLoadingRelated(true);
       setShowRelatedContent(memoId);
 
-      const response = await fetch('/agents/chat/default/find-related-content', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          memo_id: memoId,
-          content: content
-        })
-      });
+      const response = await fetch(
+        "/agents/chat/default/find-related-content",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            memo_id: memoId,
+            content: content,
+          }),
+        }
+      );
 
       if (response.ok) {
         const result = await response.json();
         setRelatedContent(result);
       } else {
-        console.warn('Failed to fetch related content:', response.status);
+        console.warn("Failed to fetch related content:", response.status);
         setRelatedContent({ memos: [], fragments: [] });
       }
     } catch (error) {
-      console.error('Error fetching related content:', error);
+      console.error("Error fetching related content:", error);
       setRelatedContent({ memos: [], fragments: [] });
     } finally {
       setLoadingRelated(false);
@@ -735,15 +828,20 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
     setRelatedContent({ memos: [], fragments: [] });
   };
 
-  const extractFragmentsFromReply = async (replyId: string, parentMemo: Memo) => {
+  const extractFragmentsFromReply = async (
+    replyId: string,
+    parentMemo: Memo
+  ) => {
     try {
-      console.log('Starting fragment extraction for reply:', replyId);
+      console.log("Starting fragment extraction for reply:", replyId);
       setExtractingFragments(replyId);
 
       // Get the full thread context
-      const threadResponse = await fetch(`/agents/chat/default/thread?slug=${encodeURIComponent(parentMemo.slug)}`);
+      const threadResponse = await fetch(
+        `/agents/chat/default/thread?slug=${encodeURIComponent(parentMemo.slug)}`
+      );
       if (!threadResponse.ok) {
-        throw new Error('Failed to fetch thread for fragment extraction');
+        throw new Error("Failed to fetch thread for fragment extraction");
       }
 
       const thread = await threadResponse.json();
@@ -751,38 +849,46 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
       // Build conversation context
       const conversationContext = thread.memos
         .filter((memo: Memo) => memo.content !== "Thinking...")
-        .map((memo: Memo) => `${memo.author === 'assistant' ? 'Assistant' : 'User'}: ${memo.content}`)
-        .join('\n\n');
+        .map(
+          (memo: Memo) =>
+            `${memo.author === "assistant" ? "Assistant" : "User"}: ${memo.content}`
+        )
+        .join("\n\n");
 
       // Find the specific reply we just created
       const newReply = thread.memos.find((memo: Memo) => memo.id === replyId);
       if (!newReply) {
-        console.warn('Could not find new reply in thread for fragment extraction');
+        console.warn(
+          "Could not find new reply in thread for fragment extraction"
+        );
         return;
       }
 
       // Call fragment extraction API
-      const extractionResponse = await fetch('/agents/chat/default/extract-fragments', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          memo_id: replyId,
-          memo_content: newReply.content,
-          thread_context: conversationContext,
-          parent_memo_id: parentMemo.id
-        })
-      });
+      const extractionResponse = await fetch(
+        "/agents/chat/default/extract-fragments",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            memo_id: replyId,
+            memo_content: newReply.content,
+            thread_context: conversationContext,
+            parent_memo_id: parentMemo.id,
+          }),
+        }
+      );
 
       if (extractionResponse.ok) {
         const extractionResult = await extractionResponse.json();
-        console.log('Fragment extraction completed:', extractionResult);
+        console.log("Fragment extraction completed:", extractionResult);
       } else {
-        console.warn('Fragment extraction failed:', extractionResponse.status);
+        console.warn("Fragment extraction failed:", extractionResponse.status);
       }
     } catch (error) {
-      console.error('Error in fragment extraction:', error);
+      console.error("Error in fragment extraction:", error);
       // Don't throw - fragment extraction is optional
     } finally {
       setExtractingFragments(null);
@@ -792,13 +898,15 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
   // Generate thread summary
   const generateThreadSummary = async (threadRootSlug: string) => {
     try {
-      console.log('Starting thread summary generation for:', threadRootSlug);
+      console.log("Starting thread summary generation for:", threadRootSlug);
       setGeneratingSummary(threadRootSlug);
 
       // Get the full thread context
-      const threadResponse = await fetch(`/agents/chat/default/thread?slug=${encodeURIComponent(threadRootSlug)}`);
+      const threadResponse = await fetch(
+        `/agents/chat/default/thread?slug=${encodeURIComponent(threadRootSlug)}`
+      );
       if (!threadResponse.ok) {
-        throw new Error('Failed to fetch thread for summary generation');
+        throw new Error("Failed to fetch thread for summary generation");
       }
 
       const thread = await threadResponse.json();
@@ -806,33 +914,42 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
       // Build full conversation context
       const conversationContext = thread.memos
         .filter((memo: Memo) => memo.content !== "Thinking...")
-        .map((memo: Memo) => `${memo.author === 'assistant' ? 'Assistant' : 'User'}: ${memo.content}`)
-        .join('\n\n');
+        .map(
+          (memo: Memo) =>
+            `${memo.author === "assistant" ? "Assistant" : "User"}: ${memo.content}`
+        )
+        .join("\n\n");
 
       // Call summary generation API
-      const summaryResponse = await fetch('/agents/chat/default/generate-thread-summary', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          thread_slug: threadRootSlug,
-          conversation_context: conversationContext,
-          total_replies: thread.memos.length
-        })
-      });
+      const summaryResponse = await fetch(
+        "/agents/chat/default/generate-thread-summary",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            thread_slug: threadRootSlug,
+            conversation_context: conversationContext,
+            total_replies: thread.memos.length,
+          }),
+        }
+      );
 
       if (summaryResponse.ok) {
         const summaryResult = await summaryResponse.json();
-        console.log('Thread summary generated:', summaryResult);
+        console.log("Thread summary generated:", summaryResult);
 
         // Refresh root memos to get updated summary
         await loadRootMemos();
       } else {
-        console.warn('Thread summary generation failed:', summaryResponse.status);
+        console.warn(
+          "Thread summary generation failed:",
+          summaryResponse.status
+        );
       }
     } catch (error) {
-      console.error('Error in thread summary generation:', error);
+      console.error("Error in thread summary generation:", error);
       // Don't throw - summary generation is optional
     } finally {
       setGeneratingSummary(null);
@@ -844,40 +961,44 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
   };
 
   const getAuthorIcon = (author?: string) => {
-    if (author?.startsWith('assistant:')) {
+    if (author?.startsWith("assistant:")) {
       // Parse persona info from author field: "assistant:emoji:name"
-      const parts = author.split(':');
+      const parts = author.split(":");
       if (parts.length >= 3) {
         const emoji = parts[1];
         const name = parts[2];
         return (
           <div className="flex items-center gap-1">
-            <span className="text-lg" title={name}>{emoji}</span>
+            <span className="text-lg" title={name}>
+              {emoji}
+            </span>
             <Robot size={16} className="text-[#F48120]" />
           </div>
         );
       }
     }
-    
-    if (author === 'assistant') {
+
+    if (author === "assistant") {
       return <Robot size={20} className="text-[#F48120]" />;
     }
-    return <User size={20} className="text-neutral-600 dark:text-neutral-400" />;
+    return (
+      <User size={20} className="text-neutral-600 dark:text-neutral-400" />
+    );
   };
 
   const getAuthorName = (author?: string) => {
-    if (author?.startsWith('assistant:')) {
+    if (author?.startsWith("assistant:")) {
       // Parse persona info from author field: "assistant:emoji:name"
-      const parts = author.split(':');
+      const parts = author.split(":");
       if (parts.length >= 3) {
         return parts[2]; // persona name
       }
     }
-    
-    if (author === 'assistant') {
-      return 'Assistant';
+
+    if (author === "assistant") {
+      return "Assistant";
     }
-    return 'You';
+    return "You";
   };
 
   const truncateContent = (content: string, maxLength: number = 280) => {
@@ -891,10 +1012,11 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
     return (
       <div
         key={memo.id}
-        className={`group border-b border-neutral-200 dark:border-neutral-800 transition-colors ${isMain
-          ? 'p-6 bg-neutral-50 dark:bg-neutral-900/30 border-l-2 border-[#F48120]'
-          : 'p-4 cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-900/50'
-          }`}
+        className={`group border-b border-neutral-200 dark:border-neutral-800 transition-colors ${
+          isMain
+            ? "p-6 bg-neutral-50 dark:bg-neutral-900/30 border-l-2 border-[#F48120]"
+            : "p-4 cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-900/50"
+        }`}
         onClick={!isMain && !isEditing ? () => navigateToMemo(memo) : undefined}
       >
         <div className="flex gap-3">
@@ -917,7 +1039,7 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
               {/* Edit/Delete buttons */}
               {!isEditing && (
                 <div className="ml-auto opacity-0 group-hover:opacity-100 flex items-center gap-1">
-                  {memo.author !== 'assistant' && (
+                  {memo.author !== "assistant" && (
                     <Button
                       variant="ghost"
                       size="sm"
@@ -950,7 +1072,6 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
               )}
 
               {/* Always visible related content button */}
-
             </div>
 
             {editingMemoId === memo.id ? (
@@ -975,7 +1096,7 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
                     ) : (
                       <Check size={12} />
                     )}
-                    {savingEdit ? 'Saving...' : 'Save'}
+                    {savingEdit ? "Saving..." : "Save"}
                   </Button>
                   <Button
                     variant="ghost"
@@ -991,10 +1112,13 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
               </div>
             ) : (
               <>
-                <p className={`leading-relaxed whitespace-pre-wrap ${isMain
-                  ? 'text-base text-neutral-900 dark:text-neutral-100'
-                  : 'text-sm text-neutral-800 dark:text-neutral-200'
-                  }`}>
+                <p
+                  className={`leading-relaxed whitespace-pre-wrap ${
+                    isMain
+                      ? "text-base text-neutral-900 dark:text-neutral-100"
+                      : "text-sm text-neutral-800 dark:text-neutral-200"
+                  }`}
+                >
                   {(() => {
                     if (isMain) {
                       return memo.content;
@@ -1002,22 +1126,36 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
 
                     // In root view, show summary if available
                     if (!currentMemo && memo.summary && memo.summary.trim()) {
-                      console.log('Showing summary for memo:', memo.slug, 'Summary:', memo.summary);
+                      console.log(
+                        "Showing summary for memo:",
+                        memo.slug,
+                        "Summary:",
+                        memo.summary
+                      );
                       return memo.summary;
                     }
 
                     // Fallback to truncated content
-                    console.log('Showing content for memo:', memo.slug, 'Has summary:', !!memo.summary);
+                    console.log(
+                      "Showing content for memo:",
+                      memo.slug,
+                      "Has summary:",
+                      !!memo.summary
+                    );
                     return truncateContent(memo.content);
                   })()}
                 </p>
 
                 {/* Show content preview when summary is displayed */}
-                {!isMain && !currentMemo && memo.summary && memo.summary.trim() && (
-                  <div className="mt-2 p-2 bg-neutral-50 dark:bg-neutral-800 rounded text-xs text-neutral-500 dark:text-neutral-400">
-                    <span className="font-medium">Original:</span> {truncateContent(memo.content, 100)}
-                  </div>
-                )}
+                {!isMain &&
+                  !currentMemo &&
+                  memo.summary &&
+                  memo.summary.trim() && (
+                    <div className="mt-2 p-2 bg-neutral-50 dark:bg-neutral-800 rounded text-xs text-neutral-500 dark:text-neutral-400">
+                      <span className="font-medium">Original:</span>{" "}
+                      {truncateContent(memo.content, 100)}
+                    </div>
+                  )}
 
                 {/* Show summary generation indicator */}
                 {generatingSummary === memo.slug && (
@@ -1036,9 +1174,9 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
                           {(() => {
                             const replyCount = replyCounts.get(memo.id) || 0;
                             if (replyCount === 0) {
-                              return 'Thread';
+                              return "Thread";
                             } else if (replyCount === 1) {
-                              return '1 reply';
+                              return "1 reply";
                             } else {
                               return `${replyCount} replies`;
                             }
@@ -1049,25 +1187,28 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
 
                     {/* Reactions */}
                     <div className="flex items-center gap-1">
-                      {Object.entries(getMemoReactions(memo)).map(([emoji, users]) => (
-                        <button
-                          key={emoji}
-                          onClick={() => {
-                            if (hasUserReacted(memo, emoji)) {
-                              removeReaction(memo.id, emoji);
-                            } else {
-                              addReaction(memo.id, emoji);
-                            }
-                          }}
-                          className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs transition-colors ${hasUserReacted(memo, emoji)
-                            ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                            : 'bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+                      {Object.entries(getMemoReactions(memo)).map(
+                        ([emoji, users]) => (
+                          <button
+                            key={emoji}
+                            onClick={() => {
+                              if (hasUserReacted(memo, emoji)) {
+                                removeReaction(memo.id, emoji);
+                              } else {
+                                addReaction(memo.id, emoji);
+                              }
+                            }}
+                            className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs transition-colors ${
+                              hasUserReacted(memo, emoji)
+                                ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+                                : "bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700"
                             }`}
-                        >
-                          <span>{emoji}</span>
-                          <span>{users.length}</span>
-                        </button>
-                      ))}
+                          >
+                            <span>{emoji}</span>
+                            <span>{users.length}</span>
+                          </button>
+                        )
+                      )}
 
                       <div className="relative reaction-picker-container">
                         <Button
@@ -1075,7 +1216,9 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
                           size="sm"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setShowReactionPicker(showReactionPicker === memo.id ? null : memo.id);
+                            setShowReactionPicker(
+                              showReactionPicker === memo.id ? null : memo.id
+                            );
                           }}
                           className="h-8 w-8 p-0 text-neutral-400 hover:text-neutral-600"
                         >
@@ -1090,7 +1233,11 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
                                 onClick={() => addReaction(memo.id, emoji)}
                                 disabled={addingReaction === memo.id}
                                 className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded text-lg transition-colors disabled:opacity-50"
-                                title={emoji === '🤖' ? 'Ask assistant to respond' : 'React with persona'}
+                                title={
+                                  emoji === "🤖"
+                                    ? "Ask assistant to respond"
+                                    : "React with persona"
+                                }
                               >
                                 {emoji}
                               </button>
@@ -1150,7 +1297,7 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
               </Button>
             )}
             <h2 className="font-semibold text-lg">
-              {currentMemo ? 'Thread' : 'Memos'}
+              {currentMemo ? "Thread" : "Memos"}
             </h2>
           </div>
 
@@ -1183,7 +1330,9 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
           {loading ? (
             <div className="p-8 text-center">
               <div className="animate-spin w-8 h-8 border-2 border-[#F48120] border-t-transparent rounded-full mx-auto mb-4"></div>
-              <p className="text-neutral-600 dark:text-neutral-400">Loading...</p>
+              <p className="text-neutral-600 dark:text-neutral-400">
+                Loading...
+              </p>
             </div>
           ) : currentMemo ? (
             // Thread view: Show full thread linearly like Twitter/X
@@ -1191,13 +1340,16 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
               {/* Thread Summary */}
               {(() => {
                 const threadHistory = buildThreadHistory(currentMemo);
-                const rootMemo = threadHistory.length > 0 ? threadHistory[0] : currentMemo;
+                const rootMemo =
+                  threadHistory.length > 0 ? threadHistory[0] : currentMemo;
 
                 return rootMemo.summary ? (
                   <div className="p-4 bg-gradient-to-r from-[#F48120]/5 to-transparent border-b-2 border-[#F48120]/20">
                     <div className="flex items-center gap-2 mb-2">
                       <div className="w-2 h-2 rounded-full bg-[#F48120]"></div>
-                      <h3 className="text-sm font-medium text-[#F48120]">Thread Summary</h3>
+                      <h3 className="text-sm font-medium text-[#F48120]">
+                        Thread Summary
+                      </h3>
                     </div>
                     <p className="text-sm text-neutral-700 dark:text-neutral-300 leading-relaxed">
                       {rootMemo.summary}
@@ -1208,7 +1360,11 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
 
               {(() => {
                 const threadHistory = buildThreadHistory(currentMemo);
-                const allThreadMemos = [...threadHistory, currentMemo, ...replies];
+                const allThreadMemos = [
+                  ...threadHistory,
+                  currentMemo,
+                  ...replies,
+                ];
 
                 return (
                   <div>
@@ -1219,9 +1375,16 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
 
                     {replies.length === 0 && (
                       <div className="p-8 text-center">
-                        <ChatCircle size={48} className="mx-auto mb-4 text-neutral-400" />
-                        <p className="text-sm text-neutral-500 mb-2">No replies yet</p>
-                        <p className="text-xs text-neutral-400 mb-4">Be the first to reply</p>
+                        <ChatCircle
+                          size={48}
+                          className="mx-auto mb-4 text-neutral-400"
+                        />
+                        <p className="text-sm text-neutral-500 mb-2">
+                          No replies yet
+                        </p>
+                        <p className="text-xs text-neutral-400 mb-4">
+                          Be the first to reply
+                        </p>
                         <Button
                           variant="primary"
                           onClick={() => openComposer(currentMemo)}
@@ -1240,21 +1403,21 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
             <div>
               {rootMemos.length === 0 ? (
                 <div className="p-8 text-center">
-                  <ChatCircle size={48} className="mx-auto mb-4 text-neutral-400" />
+                  <ChatCircle
+                    size={48}
+                    className="mx-auto mb-4 text-neutral-400"
+                  />
                   <h3 className="font-semibold text-lg mb-2">No memos yet</h3>
                   <p className="text-neutral-600 dark:text-neutral-400 mb-4">
                     Start your first conversation
                   </p>
-                  <Button
-                    variant="primary"
-                    onClick={() => openComposer(null)}
-                  >
+                  <Button variant="primary" onClick={() => openComposer(null)}>
                     <Plus size={16} className="mr-1" />
                     Create Memo
                   </Button>
                 </div>
               ) : (
-                rootMemos.map(memo => renderMemo(memo, false, true))
+                rootMemos.map((memo) => renderMemo(memo, false, true))
               )}
             </div>
           )}
@@ -1267,7 +1430,7 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
           <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl w-full max-w-lg mx-4">
             <div className="flex items-center justify-between p-4 border-b border-neutral-200 dark:border-neutral-800">
               <h3 className="font-semibold">
-                {composerParent ? 'Reply' : 'New Memo'}
+                {composerParent ? "Reply" : "New Memo"}
               </h3>
               <Button variant="ghost" size="sm" onClick={closeComposer}>
                 <X size={20} />
@@ -1280,7 +1443,9 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
                   <div className="flex items-center gap-2 mb-1">
                     {getAuthorIcon(composerParent.author)}
                     <span className="text-xs font-medium">
-                      {composerParent.author === 'assistant' ? 'Assistant' : 'You'}
+                      {composerParent.author === "assistant"
+                        ? "Assistant"
+                        : "You"}
                     </span>
                   </div>
                   <p className="text-sm text-neutral-600 dark:text-neutral-400">
@@ -1310,9 +1475,22 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
                     shape="square"
                     className="rounded-full h-10 w-10 flex-shrink-0 self-end mb-1"
                     onClick={isSessionActive ? stopSession : startSession}
-                    aria-label={isSessionActive ? "Stop voice session" : "Start voice session"}
+                    aria-label={
+                      isSessionActive
+                        ? "Stop voice session"
+                        : "Start voice session"
+                    }
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="h-5 w-5"
+                    >
                       {isSessionActive ? (
                         <circle cx="12" cy="12" r="10" fill="currentColor" />
                       ) : (
@@ -1347,11 +1525,11 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
                       disabled={!replyContent.trim() || creatingReply}
                     >
                       {creatingReply ? (
-                        'Posting...'
+                        "Posting..."
                       ) : (
                         <>
                           <PaperPlaneTilt size={14} className="mr-1" />
-                          {composerParent ? 'Reply' : 'Post'}
+                          {composerParent ? "Reply" : "Post"}
                         </>
                       )}
                     </Button>
@@ -1381,7 +1559,9 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
               {loadingRelated ? (
                 <div className="p-8 text-center">
                   <div className="animate-spin w-8 h-8 border-2 border-[#F48120] border-t-transparent rounded-full mx-auto mb-4"></div>
-                  <p className="text-neutral-600 dark:text-neutral-400">Finding related content...</p>
+                  <p className="text-neutral-600 dark:text-neutral-400">
+                    Finding related content...
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-6">
@@ -1438,7 +1618,8 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
                               </span>
                               {fragment.similarity && (
                                 <span className="text-xs text-neutral-500">
-                                  {Math.round(fragment.similarity * 100)}% similar
+                                  {Math.round(fragment.similarity * 100)}%
+                                  similar
                                 </span>
                               )}
                             </div>
@@ -1452,13 +1633,21 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
                   )}
 
                   {/* No results */}
-                  {relatedContent.memos.length === 0 && relatedContent.fragments.length === 0 && (
-                    <div className="p-8 text-center">
-                      <Graph size={48} className="mx-auto mb-4 text-neutral-400" />
-                      <p className="text-sm text-neutral-500 mb-2">No related content found</p>
-                      <p className="text-xs text-neutral-400">This memo appears to be unique or on a new topic</p>
-                    </div>
-                  )}
+                  {relatedContent.memos.length === 0 &&
+                    relatedContent.fragments.length === 0 && (
+                      <div className="p-8 text-center">
+                        <Graph
+                          size={48}
+                          className="mx-auto mb-4 text-neutral-400"
+                        />
+                        <p className="text-sm text-neutral-500 mb-2">
+                          No related content found
+                        </p>
+                        <p className="text-xs text-neutral-400">
+                          This memo appears to be unique or on a new topic
+                        </p>
+                      </div>
+                    )}
                 </div>
               )}
             </div>
@@ -1484,7 +1673,9 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
               {loadingRelated ? (
                 <div className="p-8 text-center">
                   <div className="animate-spin w-8 h-8 border-2 border-[#F48120] border-t-transparent rounded-full mx-auto mb-4"></div>
-                  <p className="text-neutral-600 dark:text-neutral-400">Finding related content...</p>
+                  <p className="text-neutral-600 dark:text-neutral-400">
+                    Finding related content...
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-6">
@@ -1541,7 +1732,8 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
                               </span>
                               {fragment.similarity && (
                                 <span className="text-xs text-neutral-500">
-                                  {Math.round(fragment.similarity * 100)}% similar
+                                  {Math.round(fragment.similarity * 100)}%
+                                  similar
                                 </span>
                               )}
                             </div>
@@ -1555,13 +1747,21 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
                   )}
 
                   {/* No results */}
-                  {relatedContent.memos.length === 0 && relatedContent.fragments.length === 0 && (
-                    <div className="p-8 text-center">
-                      <Graph size={48} className="mx-auto mb-4 text-neutral-400" />
-                      <p className="text-sm text-neutral-500 mb-2">No related content found</p>
-                      <p className="text-xs text-neutral-400">This memo appears to be unique or on a new topic</p>
-                    </div>
-                  )}
+                  {relatedContent.memos.length === 0 &&
+                    relatedContent.fragments.length === 0 && (
+                      <div className="p-8 text-center">
+                        <Graph
+                          size={48}
+                          className="mx-auto mb-4 text-neutral-400"
+                        />
+                        <p className="text-sm text-neutral-500 mb-2">
+                          No related content found
+                        </p>
+                        <p className="text-xs text-neutral-400">
+                          This memo appears to be unique or on a new topic
+                        </p>
+                      </div>
+                    )}
                 </div>
               )}
             </div>
@@ -1587,7 +1787,9 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
               {loadingRelated ? (
                 <div className="p-8 text-center">
                   <div className="animate-spin w-8 h-8 border-2 border-[#F48120] border-t-transparent rounded-full mx-auto mb-4"></div>
-                  <p className="text-neutral-600 dark:text-neutral-400">Finding related content...</p>
+                  <p className="text-neutral-600 dark:text-neutral-400">
+                    Finding related content...
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-6">
@@ -1644,7 +1846,8 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
                               </span>
                               {fragment.similarity && (
                                 <span className="text-xs text-neutral-500">
-                                  {Math.round(fragment.similarity * 100)}% similar
+                                  {Math.round(fragment.similarity * 100)}%
+                                  similar
                                 </span>
                               )}
                             </div>
@@ -1658,13 +1861,21 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
                   )}
 
                   {/* No results */}
-                  {relatedContent.memos.length === 0 && relatedContent.fragments.length === 0 && (
-                    <div className="p-8 text-center">
-                      <Graph size={48} className="mx-auto mb-4 text-neutral-400" />
-                      <p className="text-sm text-neutral-500 mb-2">No related content found</p>
-                      <p className="text-xs text-neutral-400">This memo appears to be unique or on a new topic</p>
-                    </div>
-                  )}
+                  {relatedContent.memos.length === 0 &&
+                    relatedContent.fragments.length === 0 && (
+                      <div className="p-8 text-center">
+                        <Graph
+                          size={48}
+                          className="mx-auto mb-4 text-neutral-400"
+                        />
+                        <p className="text-sm text-neutral-500 mb-2">
+                          No related content found
+                        </p>
+                        <p className="text-xs text-neutral-400">
+                          This memo appears to be unique or on a new topic
+                        </p>
+                      </div>
+                    )}
                 </div>
               )}
             </div>

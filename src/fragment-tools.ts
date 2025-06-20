@@ -110,9 +110,19 @@ const createFragment = tool({
     speaker: z.string().optional().describe("'user' | 'assistant' | other"),
     ts: z.string().optional().describe("ISO timestmp of source utterance"),
     convo_id: z.string().optional().describe("Conversation/Transcript id"),
-    metadata: z.string().optional().describe("Arbitrary JSON with tags, span, etc."),
+    metadata: z
+      .string()
+      .optional()
+      .describe("Arbitrary JSON with tags, span, etc."),
   }),
-  execute: async ({ slug, content, speaker = null, ts, convo_id = null, metadata = "{}" }) => {
+  execute: async ({
+    slug,
+    content,
+    speaker = null,
+    ts,
+    convo_id = null,
+    metadata = "{}",
+  }) => {
     const agent = agentContext.getStore() as Chat | null;
     if (!agent) {
       throw new Error("No agent found");
@@ -145,7 +155,10 @@ const createFragment = tool({
         try {
           const embeddings = await agent.createEmbeddings(content);
           const vector_id = `fragment-${id}`;
-          await agent.storeVectorEmbedding(vector_id, embeddings, { fragment_id: id, slug });
+          await agent.storeVectorEmbedding(vector_id, embeddings, {
+            fragment_id: id,
+            slug,
+          });
 
           // Update the fragment row with the vector_id once done
           // @ts-ignore
@@ -168,7 +181,7 @@ const createFragment = tool({
 const getFragment = tool({
   description: "Fetch one fragment by slug",
   parameters: z.object({
-    slug: z.string().describe("URL-friendly identifier of the fragment")
+    slug: z.string().describe("URL-friendly identifier of the fragment"),
   }),
   execute: async ({ slug }) => {
     const agent = agentContext.getStore();
@@ -176,15 +189,15 @@ const getFragment = tool({
       throw new Error("No agent found");
     }
     await initFragmentTables();
-    
+
     const frags = await agent.sql<Fragment>`
       SELECT * FROM fragments WHERE slug = ${slug} LIMIT 1
     `;
-    
+
     if (!frags.length) {
       return `No fragment found with slug '${slug}'.`;
     }
-    
+
     return frags[0];
   },
 });
@@ -195,7 +208,7 @@ const getFragment = tool({
 const getFragmentLinks = tool({
   description: "List links (incoming/outgoing) of a fragment by slug",
   parameters: z.object({
-    slug: z.string().describe("URL-friendly identifier of the fragment")
+    slug: z.string().describe("URL-friendly identifier of the fragment"),
   }),
   execute: async ({ slug }) => {
     const agent = agentContext.getStore();
@@ -203,18 +216,18 @@ const getFragmentLinks = tool({
       throw new Error("No agent found");
     }
     await initFragmentTables();
-    
+
     // First verify the fragment exists
     const frags = await agent.sql<Fragment>`
       SELECT id FROM fragments WHERE slug = ${slug} LIMIT 1
     `;
-    
+
     if (!frags.length) {
       return `No fragment found with slug '${slug}'.`;
     }
-    
+
     const fragment_id = frags[0].id;
-    
+
     // Get outgoing links
     const outgoing = await agent.sql`
       SELECT fe.rel, fe.to_id, f2.slug AS to_slug
@@ -222,7 +235,7 @@ const getFragmentLinks = tool({
       JOIN fragments f2 ON fe.to_id = f2.id
       WHERE fe.from_id = ${fragment_id}
     `;
-    
+
     // Get incoming links
     const incoming = await agent.sql`
       SELECT fe.rel, fe.from_id, f2.slug AS from_slug
@@ -230,11 +243,11 @@ const getFragmentLinks = tool({
       JOIN fragments f2 ON fe.from_id = f2.id
       WHERE fe.to_id = ${fragment_id}
     `;
-    
+
     return {
       fragment_slug: slug,
       outgoing: outgoing,
-      incoming: incoming
+      incoming: incoming,
     };
   },
 });
@@ -247,7 +260,9 @@ const linkFragments = tool({
   parameters: z.object({
     from_slug: z.string(),
     to_slug: z.string(),
-    rel: z.string().describe("Relationship verb, e.g. 'example_of', 'abstracts'"),
+    rel: z
+      .string()
+      .describe("Relationship verb, e.g. 'example_of', 'abstracts'"),
     weight: z.number().optional(),
     metadata: z.string().optional(),
   }),
@@ -351,22 +366,26 @@ const semanticSearchFragments = tool({
     await initFragmentTables();
 
     const queryEmbedding = await agent.createEmbeddings(query);
-    const vectorResults = await agent.searchSimilarVectors(queryEmbedding, top_k, threshold);
-    
+    const vectorResults = await agent.searchSimilarVectors(
+      queryEmbedding,
+      top_k,
+      threshold
+    );
+
     // If no matches found, return the empty results
     if (!vectorResults?.matches?.length) {
       return vectorResults;
     }
-    
+
     // Extract fragment IDs from the vector results
     const fragmentIds = vectorResults.matches
       .map((match: any) => match.metadata?.fragment_id)
       .filter(Boolean);
-    
+
     if (!fragmentIds.length) {
       return vectorResults;
     }
-    
+
     // Fetch the actual fragment content
     const fragmentContents: Record<string, Fragment> = {};
     for (const fragmentId of fragmentIds) {
@@ -374,17 +393,17 @@ const semanticSearchFragments = tool({
         SELECT * FROM fragments 
         WHERE id = ${fragmentId} 
         LIMIT 1`;
-      
+
       if (fragments.length > 0) {
         fragmentContents[fragmentId] = fragments[0];
       }
     }
-    
+
     // Enhance the vector results with fragment content
     const enhancedMatches = vectorResults.matches.map((match: any) => {
       const fragmentId = match.metadata?.fragment_id;
       const fragment = fragmentContents[fragmentId];
-      
+
       if (fragment) {
         return {
           ...match,
@@ -395,17 +414,17 @@ const semanticSearchFragments = tool({
             speaker: fragment.speaker,
             ts: fragment.ts,
             created: fragment.created,
-            modified: fragment.modified
-          }
+            modified: fragment.modified,
+          },
         };
       }
-      
+
       return match;
     });
-    
+
     return {
       ...vectorResults,
-      matches: enhancedMatches
+      matches: enhancedMatches,
     };
   },
 });

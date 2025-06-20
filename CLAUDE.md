@@ -5,6 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Common Development Commands
 
 ### Build and Deploy
+
 ```bash
 # Install dependencies
 npm install
@@ -23,7 +24,9 @@ npm run check
 ```
 
 ### Environment Setup
+
 1. Create `.dev.vars` file with API keys (at least one required):
+
    ```
    OPENAI_API_KEY=sk-proj-...
    ANTHROPIC_API_KEY=sk-ant-...
@@ -38,6 +41,7 @@ npm run check
 ## High-Level Architecture
 
 ### Core Stack
+
 - **Runtime**: Cloudflare Workers with Durable Objects for persistent state
 - **Database**: SQLite (via Durable Objects) + Cloudflare Vectorize for vector search
 - **AI Models**: OpenAI GPT-4o, Anthropic Claude via official SDKs
@@ -47,6 +51,7 @@ npm run check
 ### Key Components
 
 1. **Chat Class** (`src/server.ts`): Main Durable Object handling:
+
    - AI chat streaming with tool execution
    - SQLite database operations for fragments and memos
    - Vector embeddings generation and search
@@ -54,12 +59,14 @@ npm run check
    - MCP server connections
 
 2. **Data Models**:
+
    - **Fragments**: Atomic knowledge units with semantic relationships
    - **Memos**: Longer notes with backlink support (`[[slug]]` syntax)
    - **Threads**: Conversation threading with parent-child relationships
    - **Reactions**: Emoji reactions on memos
 
 3. **AI Tools** (Human-in-the-loop confirmation for sensitive operations):
+
    - Fragment tools: create, link, search
    - Memo tools: CRUD operations
    - Custom tools: weather, scheduling, etc.
@@ -70,12 +77,14 @@ npm run check
    - Markdown rendering with backlink support
 
 ### API Patterns
+
 - All endpoints handled in Chat class's `onRequest` method
 - Streaming responses for AI chat via Server-Sent Events
 - RESTful endpoints for data operations
 - WebSocket support for real-time features
 
 ### Database Schema
+
 ```sql
 -- Fragments: atomic knowledge units
 CREATE TABLE fragments (
@@ -117,6 +126,7 @@ CREATE TABLE memo_reactions (
 ```
 
 ### Relationship Types
+
 - `example_of`: Concrete instance
 - `abstracts`: General from specific
 - `generalizes_to`: Broader application
@@ -126,6 +136,7 @@ CREATE TABLE memo_reactions (
 - `supports`: Supporting evidence
 
 ### Development Notes
+
 - This is a prototype focused on UX, reflecting rapid iteration
 - Single-user system (no auth)
 - Lazy embedding generation for performance
@@ -133,19 +144,22 @@ CREATE TABLE memo_reactions (
 - No formal migration system for schema changes
 
 ### Testing Approach
+
 - Framework: Vitest with Cloudflare Workers pool
 - Test files in `/tests/` directory
 - Minimal test coverage currently
 - Run individual tests with: `npm test -- path/to/test`
 
 ### Cloudflare Configuration
+
 - Main config: `wrangler.jsonc`
 - Bindings for AI, Vectorize, and Durable Objects
 - Compatibility date and flags set for latest features
 - Observability enabled for debugging
 
 ### Code Patterns
+
 1. **Tool Definition**: Auto-executing tools have `execute` function, confirmation-required tools use separate executions object
-2. **Async Operations**: Heavy use of async/await for AI and database operations  
+2. **Async Operations**: Heavy use of async/await for AI and database operations
 3. **Error Handling**: Try-catch blocks around AI calls and database operations
 4. **State Management**: Maintained in Chat class including messages, model selection, MCP servers

@@ -1,11 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { Card } from "@/components/card/Card";
 import { Button } from "@/components/button/Button";
-import {
-  ArrowClockwise,
-  X,
-  MagnifyingGlass,
-} from "@phosphor-icons/react";
+import { ArrowClockwise, X, MagnifyingGlass } from "@phosphor-icons/react";
 import { FragmentViewer } from "./FragmentViewer";
 import { FragmentGraph } from "./FragmentGraph";
 
@@ -107,16 +103,13 @@ export function FragmentsPanel({ onClose }: Props) {
   if (loading && fragments.length === 0) {
     return (
       <Card className="m-4 p-4 flex items-center gap-2">
-        <ArrowClockwise className="animate-spin" size={16} /> Loading
-        fragments…
+        <ArrowClockwise className="animate-spin" size={16} /> Loading fragments…
       </Card>
     );
   }
 
   if (error) {
-    return (
-      <Card className="m-4 p-4 text-red-500">Error: {error}</Card>
-    );
+    return <Card className="m-4 p-4 text-red-500">Error: {error}</Card>;
   }
 
   // ─────────────────────── main list UI ──────────────────────────
@@ -130,7 +123,11 @@ export function FragmentsPanel({ onClose }: Props) {
             {total !== null ? ` / ${total}` : ""})
           </h2>
           {/* Graph toggle */}
-          <Button variant="secondary" size="sm" onClick={() => setShowGraph(true)}>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setShowGraph(true)}
+          >
             Graph
           </Button>
         </div>
@@ -191,7 +188,9 @@ export function FragmentsPanel({ onClose }: Props) {
                   {f.speaker ?? "-"}
                 </td>
                 <td className="px-3 py-2 text-center">{f.link_count}</td>
-                <td className="px-3 py-2 max-w-[400px] truncate">{f.content}</td>
+                <td className="px-3 py-2 max-w-[400px] truncate">
+                  {f.content}
+                </td>
                 <td className="px-3 py-2 whitespace-nowrap">
                   {new Date(f.created).toLocaleString()}
                 </td>

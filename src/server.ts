@@ -22,7 +22,7 @@ import type {
   Prompt,
   Resource,
 } from "@modelcontextprotocol/sdk/types.js";
-import { handleMemosApi } from './memos-api';
+import { handleMemosApi } from "./memos-api";
 import type { Ai, Vectorize } from "@cloudflare/workers-types/experimental";
 import { SYSTEM_PROMPT } from "./prompt";
 // import { env } from "cloudflare:workers";
@@ -97,7 +97,6 @@ export class Chat extends AIChatAgent<Env, State> {
    * them here and inject them into the *next* turn's system prompt.
    */
 
-
   /**
    * Opportunistically create a fragment from the most recent user message if
    * we haven\'t done so yet and the content is long enough to be meaningful.
@@ -112,7 +111,10 @@ export class Chat extends AIChatAgent<Env, State> {
     }
 
     // Simple heuristic: skip if the message is very short
-    if (typeof lastMsg.content !== "string" || lastMsg.content.trim().length < 20) {
+    if (
+      typeof lastMsg.content !== "string" ||
+      lastMsg.content.trim().length < 20
+    ) {
       return;
     }
 
@@ -145,7 +147,9 @@ export class Chat extends AIChatAgent<Env, State> {
       });
 
       this.processedUserMessageIds.add(lastMsg.id);
-      console.log(`Auto-created fragment '${baseSlug}' from latest user message.`);
+      console.log(
+        `Auto-created fragment '${baseSlug}' from latest user message.`
+      );
 
       // Record the slug so we can tell the model in the system prompt for
       // this turn. We don't add any synthetic messages, keeping the timeline
@@ -170,20 +174,27 @@ export class Chat extends AIChatAgent<Env, State> {
   async createEmbeddings(text: string): Promise<number[]> {
     try {
       if (!this.env.AI) {
-        throw new Error('AI service not available');
+        throw new Error("AI service not available");
       }
 
       const embedding = await this.env.AI.run("@cf/baai/bge-base-en-v1.5", {
-        text: text
+        text: text,
       });
 
       return embedding.data[0];
     } catch (error) {
       // Only log in development if it's not an authentication error
-      if (!(error instanceof Error && error.message.includes('Authentication error'))) {
-        console.error('Error creating embeddings:', error);
+      if (
+        !(
+          error instanceof Error &&
+          error.message.includes("Authentication error")
+        )
+      ) {
+        console.error("Error creating embeddings:", error);
       } else {
-        console.log('Embeddings unavailable in development mode (authentication error)');
+        console.log(
+          "Embeddings unavailable in development mode (authentication error)"
+        );
       }
       throw error;
     }
@@ -192,15 +203,19 @@ export class Chat extends AIChatAgent<Env, State> {
   /**
    * Store vector embeddings in Vectorize
    */
-  async storeVectorEmbedding(id: string, values: number[], metadata: Record<string, any> = {}): Promise<void> {
+  async storeVectorEmbedding(
+    id: string,
+    values: number[],
+    metadata: Record<string, any> = {}
+  ): Promise<void> {
     try {
       if (!this.env.VECTORIZE) {
-        throw new Error('Vectorize service not available');
+        throw new Error("Vectorize service not available");
       }
 
       await this.env.VECTORIZE.upsert([{ id, values, metadata }]);
     } catch (error) {
-      console.error('Error storing vector embedding:', error);
+      console.error("Error storing vector embedding:", error);
       throw error;
     }
   }
@@ -211,7 +226,7 @@ export class Chat extends AIChatAgent<Env, State> {
   async deleteVectorEmbedding(id: string): Promise<void> {
     try {
       if (!this.env.VECTORIZE) {
-        throw new Error('Vectorize service not available');
+        throw new Error("Vectorize service not available");
       }
 
       // For Cloudflare Vectorize, we'll need to use the available API
@@ -227,7 +242,10 @@ export class Chat extends AIChatAgent<Env, State> {
           await this.env.VECTORIZE.deleteOne(id);
         } catch (e2) {
           // If both methods fail, log it but don't fail the operation
-          console.warn('Vector deletion not fully implemented, skipping deletion of:', id);
+          console.warn(
+            "Vector deletion not fully implemented, skipping deletion of:",
+            id
+          );
         }
       }
     } catch (error) {
@@ -239,10 +257,14 @@ export class Chat extends AIChatAgent<Env, State> {
   /**
    * Search for similar vectors in Vectorize
    */
-  async searchSimilarVectors(queryVector: number[], limit: number = 5, threshold: number = 0): Promise<any> {
+  async searchSimilarVectors(
+    queryVector: number[],
+    limit: number = 5,
+    threshold: number = 0
+  ): Promise<any> {
     try {
       if (!this.env.VECTORIZE) {
-        throw new Error('Vectorize service not available');
+        throw new Error("Vectorize service not available");
       }
 
       console.log(`Searching for similar vectors with limit: ${limit}`);
@@ -250,20 +272,22 @@ export class Chat extends AIChatAgent<Env, State> {
         topK: limit,
         returnMetadata: true,
         // Only apply threshold if it's greater than 0
-        ...(threshold > 0 ? { threshold } : {})
+        ...(threshold > 0 ? { threshold } : {}),
       });
 
       console.log(`Found ${results?.matches?.length || 0} vector matches`);
       if (results?.matches?.length > 0) {
         console.log(`First match score: ${results.matches[0].score}`);
         if (results.matches[0].metadata) {
-          console.log(`First match metadata: ${JSON.stringify(results.matches[0].metadata)}`);
+          console.log(
+            `First match metadata: ${JSON.stringify(results.matches[0].metadata)}`
+          );
         }
       }
 
       return results;
     } catch (error) {
-      console.error('Error searching similar vectors:', error);
+      console.error("Error searching similar vectors:", error);
       throw error;
     }
   }
@@ -328,19 +352,25 @@ export class Chat extends AIChatAgent<Env, State> {
           });
 
           // --- build semantic context synchronously -------------
-          const lastUser = [...this.messages].reverse().find((m) => m.role === "user");
+          const lastUser = [...this.messages]
+            .reverse()
+            .find((m) => m.role === "user");
 
           let contextBlocks = "";
 
           if (lastUser && typeof lastUser.content === "string") {
             // Fetch related fragments
-            const relatedFragBlock = await this.buildContextFromFragments(lastUser.content);
+            const relatedFragBlock = await this.buildContextFromFragments(
+              lastUser.content
+            );
             if (relatedFragBlock) {
               contextBlocks += `\n\n---- Related fragments ----\n${relatedFragBlock}\n--------------------------------\n`;
             }
 
             // Fetch related memos
-            const relatedMemosBlock = await this.buildContextFromMemos(lastUser.content);
+            const relatedMemosBlock = await this.buildContextFromMemos(
+              lastUser.content
+            );
             if (relatedMemosBlock) {
               contextBlocks += `\n\n---- Related memos ----\n${relatedMemosBlock}\n--------------------------------\n`;
             }
@@ -351,7 +381,9 @@ export class Chat extends AIChatAgent<Env, State> {
             : SYSTEM_PROMPT;
 
           // Set the current model based on state
-          const modelToUse = setCurrentModel(this.state.currentModelName || OPENAI_MODEL_NAME);
+          const modelToUse = setCurrentModel(
+            this.state.currentModelName || OPENAI_MODEL_NAME
+          );
 
           const result = streamText({
             model: modelToUse,
@@ -403,10 +435,7 @@ export class Chat extends AIChatAgent<Env, State> {
       }
 
       return rows
-        .map(
-          (r: any, i: number) =>
-            `#${i + 1} [[${r.slug}]]\n${r.content}`
-        )
+        .map((r: any, i: number) => `#${i + 1} [[${r.slug}]]\n${r.content}`)
         .join("\n\n");
     } catch (err) {
       console.warn("context-fragment lookup failed", err);
@@ -432,17 +461,13 @@ export class Chat extends AIChatAgent<Env, State> {
       }
 
       return rows
-        .map(
-          (r: any, i: number) =>
-            `#${i + 1} [[${r.slug}]]\n${r.content}`
-        )
+        .map((r: any, i: number) => `#${i + 1} [[${r.slug}]]\n${r.content}`)
         .join("\n\n");
     } catch (err) {
       console.warn("context-memo lookup failed", err);
       return "";
     }
   }
-
 
   /**
    * Handles API requests for memos
@@ -677,14 +702,16 @@ export class Chat extends AIChatAgent<Env, State> {
         return Response.json({ exists: result[0]?.count > 0 });
       } catch (err) {
         console.error("Error checking fragment existence", err);
-        return new Response("Error checking fragment existence", { status: 500 });
+        return new Response("Error checking fragment existence", {
+          status: 500,
+        });
       }
     }
 
     // POST /agents/chat/<id>/create-fragment
     if (url.pathname.endsWith("create-fragment") && request.method === "POST") {
       try {
-        const data = await request.json() as {
+        const data = (await request.json()) as {
           title: string;
           content: string;
           source_memo_id?: string;
@@ -710,16 +737,18 @@ export class Chat extends AIChatAgent<Env, State> {
           )`;
 
         const now = new Date().toISOString();
-        const slug = title.toLowerCase()
-          .replace(/[^a-z0-9\s]/g, "")
-          .trim()
-          .split(/\s+/)
-          .slice(0, 6)
-          .join("-") || `fragment-${Date.now()}`;
+        const slug =
+          title
+            .toLowerCase()
+            .replace(/[^a-z0-9\s]/g, "")
+            .trim()
+            .split(/\s+/)
+            .slice(0, 6)
+            .join("-") || `fragment-${Date.now()}`;
 
         const metadata = JSON.stringify({
           source_memo_id: source_memo_id || null,
-          extracted_by: "auto"
+          extracted_by: "auto",
         });
 
         const result = await this.sql`
@@ -733,23 +762,36 @@ export class Chat extends AIChatAgent<Env, State> {
         // Create vector embedding for the fragment
         try {
           const embedding = await this.env.AI.run("@cf/baai/bge-base-en-v1.5", {
-            text: content
+            text: content,
           });
 
-          await this.env.VECTORIZE.upsert([{
-            id: fragmentId,
-            values: embedding.data[0],
-            metadata: {
-              content: content,
-              type: "fragment",
-              slug: slug
-            }
-          }]);
+          await this.env.VECTORIZE.upsert([
+            {
+              id: fragmentId,
+              values: embedding.data[0],
+              metadata: {
+                content: content,
+                type: "fragment",
+                slug: slug,
+              },
+            },
+          ]);
         } catch (vectorError) {
-          if (!(vectorError instanceof Error && (vectorError.message.includes('Authentication error') || vectorError.message.includes('VECTOR_UPSERT_ERROR')))) {
-            console.error("Error creating vector embedding for fragment:", vectorError);
+          if (
+            !(
+              vectorError instanceof Error &&
+              (vectorError.message.includes("Authentication error") ||
+                vectorError.message.includes("VECTOR_UPSERT_ERROR"))
+            )
+          ) {
+            console.error(
+              "Error creating vector embedding for fragment:",
+              vectorError
+            );
           } else {
-            console.log('Fragment vector embedding unavailable in development mode');
+            console.log(
+              "Fragment vector embedding unavailable in development mode"
+            );
           }
           // Continue without vector embedding
         }
@@ -758,21 +800,25 @@ export class Chat extends AIChatAgent<Env, State> {
           success: true,
           id: fragmentId,
           slug: slug,
-          message: "Fragment created successfully"
+          message: "Fragment created successfully",
         });
       } catch (error) {
         console.error("Error creating fragment:", error);
-        return Response.json({
-          success: false,
-          error: error instanceof Error ? error.message : "Internal server error"
-        }, { status: 500 });
+        return Response.json(
+          {
+            success: false,
+            error:
+              error instanceof Error ? error.message : "Internal server error",
+          },
+          { status: 500 }
+        );
       }
     }
 
     // POST /agents/chat/<id>/link-fragments
     if (url.pathname.endsWith("link-fragments") && request.method === "POST") {
       try {
-        const data = await request.json() as {
+        const data = (await request.json()) as {
           from_memo_id: string;
           to_fragment_id: string;
           relationship: string;
@@ -798,7 +844,7 @@ export class Chat extends AIChatAgent<Env, State> {
         const now = new Date().toISOString();
         const metadata = JSON.stringify({
           from_memo_id: from_memo_id,
-          relationship_type: "memo_to_fragment"
+          relationship_type: "memo_to_fragment",
         });
 
         await this.sql`
@@ -808,14 +854,18 @@ export class Chat extends AIChatAgent<Env, State> {
 
         return Response.json({
           success: true,
-          message: "Fragment link created successfully"
+          message: "Fragment link created successfully",
         });
       } catch (error) {
         console.error("Error creating fragment link:", error);
-        return Response.json({
-          success: false,
-          error: error instanceof Error ? error.message : "Internal server error"
-        }, { status: 500 });
+        return Response.json(
+          {
+            success: false,
+            error:
+              error instanceof Error ? error.message : "Internal server error",
+          },
+          { status: 500 }
+        );
       }
     }
 
@@ -846,7 +896,11 @@ export class Chat extends AIChatAgent<Env, State> {
       }
 
       let currentMemo = memoResult[0];
-      console.log("Found memo:", { id: currentMemo.id, slug: currentMemo.slug, parent_id: currentMemo.parent_id });
+      console.log("Found memo:", {
+        id: currentMemo.id,
+        slug: currentMemo.slug,
+        parent_id: currentMemo.parent_id,
+      });
 
       // Walk up to find the root of the thread
       while (currentMemo.parent_id) {
@@ -890,7 +944,7 @@ export class Chat extends AIChatAgent<Env, State> {
       console.log("All thread memos found:", allThreadMemos.length);
 
       // Fetch reactions for all memos in the thread
-      const memoIds = allThreadMemos.map(memo => memo.id);
+      const memoIds = allThreadMemos.map((memo) => memo.id);
       let reactions = [];
 
       if (memoIds.length > 0) {
@@ -918,13 +972,15 @@ export class Chat extends AIChatAgent<Env, State> {
             reactions.push(...memoReactions);
           }
         } catch (error) {
-          console.error('Error fetching reactions for thread:', error);
+          console.error("Error fetching reactions for thread:", error);
           // Continue without reactions if there's an error
         }
       }
 
       // Group reactions by memo_id and emoji
-      const reactionsByMemo: { [memoId: string]: { [emoji: string]: string[] } } = {};
+      const reactionsByMemo: {
+        [memoId: string]: { [emoji: string]: string[] };
+      } = {};
 
       reactions.forEach((reaction: any) => {
         if (!reactionsByMemo[reaction.memo_id]) {
@@ -933,7 +989,9 @@ export class Chat extends AIChatAgent<Env, State> {
         if (!reactionsByMemo[reaction.memo_id][reaction.emoji]) {
           reactionsByMemo[reaction.memo_id][reaction.emoji] = [];
         }
-        reactionsByMemo[reaction.memo_id][reaction.emoji].push(reaction.user_id);
+        reactionsByMemo[reaction.memo_id][reaction.emoji].push(
+          reaction.user_id
+        );
       });
 
       // Build tree structure with reply counts
@@ -941,12 +999,14 @@ export class Chat extends AIChatAgent<Env, State> {
 
       // First pass: create memo objects with reply count, reactions, and empty replies array
       for (const memo of allThreadMemos) {
-        const replyCount = allThreadMemos.filter(m => m.parent_id === memo.id).length;
+        const replyCount = allThreadMemos.filter(
+          (m) => m.parent_id === memo.id
+        ).length;
         memoMap.set(memo.id, {
           ...memo,
           replies: [],
           replyCount,
-          reactions: reactionsByMemo[memo.id] || {}
+          reactions: reactionsByMemo[memo.id] || {},
         });
       }
 
@@ -965,15 +1025,23 @@ export class Chat extends AIChatAgent<Env, State> {
       // Get the focused memo with its replies
       const focusedMemoWithReplies = memoMap.get(memoResult[0].id);
 
-      console.log("Tree structure built - root has", rootWithTree?.replies?.length || 0, "direct replies");
-      console.log("Focused memo has", focusedMemoWithReplies?.replies?.length || 0, "direct replies");
+      console.log(
+        "Tree structure built - root has",
+        rootWithTree?.replies?.length || 0,
+        "direct replies"
+      );
+      console.log(
+        "Focused memo has",
+        focusedMemoWithReplies?.replies?.length || 0,
+        "direct replies"
+      );
 
       return {
         root: rootMemo,
         tree: rootWithTree, // The root with its complete tree structure
-        memos: allThreadMemos,     // Flat list for compatibility
+        memos: allThreadMemos, // Flat list for compatibility
         total: allThreadMemos.length,
-        focusedMemo: focusedMemoWithReplies // The requested memo with its replies
+        focusedMemo: focusedMemoWithReplies, // The requested memo with its replies
       };
     } catch (error) {
       console.error("Error getting thread:", error);
@@ -991,13 +1059,19 @@ export class Chat extends AIChatAgent<Env, State> {
     const url = new URL(request.url);
 
     // Check if Anthropic API key is configured
-    if (url.pathname.endsWith("/check-anthropic-key") && request.method === "GET") {
-      return new Response(JSON.stringify({
-        success: !!this.env.ANTHROPIC_API_KEY
-      }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" }
-      });
+    if (
+      url.pathname.endsWith("/check-anthropic-key") &&
+      request.method === "GET"
+    ) {
+      return new Response(
+        JSON.stringify({
+          success: !!this.env.ANTHROPIC_API_KEY,
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
     }
 
     // Handle thread endpoints
@@ -1010,7 +1084,10 @@ export class Chat extends AIChatAgent<Env, State> {
       }
 
       const thread = await this.getThread(slug);
-      console.log("Thread result:", thread ? `Found ${thread.total} memos` : "Not found");
+      console.log(
+        "Thread result:",
+        thread ? `Found ${thread.total} memos` : "Not found"
+      );
 
       if (!thread) {
         return new Response("Thread not found", { status: 404 });
@@ -1022,18 +1099,27 @@ export class Chat extends AIChatAgent<Env, State> {
     // Handle create reply endpoint
     if (url.pathname.endsWith("/create-reply") && request.method === "POST") {
       try {
-        const data = await request.json() as { parent_slug: string; content: string; author?: string };
+        const data = (await request.json()) as {
+          parent_slug: string;
+          content: string;
+          author?: string;
+        };
         const { parent_slug, content, author = "user" } = data;
 
         console.log("Create reply request:", { parent_slug, content, author });
 
         if (!parent_slug || !content) {
-          console.log("Missing required fields:", { parent_slug: !!parent_slug, content: !!content });
+          console.log("Missing required fields:", {
+            parent_slug: !!parent_slug,
+            content: !!content,
+          });
           return new Response("Missing required fields", { status: 400 });
         }
 
         // Initialize memos table to ensure parent_id and author columns exist
-        const { initMemosTableWithAgent, memoTools } = await import("./memo-tools");
+        const { initMemosTableWithAgent, memoTools } = await import(
+          "./memo-tools"
+        );
         await initMemosTableWithAgent(this);
 
         // Use the createReply tool with agent context
@@ -1041,7 +1127,7 @@ export class Chat extends AIChatAgent<Env, State> {
           return await memoTools.createReply.execute({
             parent_slug,
             content,
-            author
+            author,
           });
         });
 
@@ -1049,14 +1135,28 @@ export class Chat extends AIChatAgent<Env, State> {
         return Response.json({ success: true, message: result });
       } catch (error) {
         console.error("Error creating reply:", error);
-        return Response.json({ success: false, error: error instanceof Error ? error.message : "Internal server error" }, { status: 500 });
+        return Response.json(
+          {
+            success: false,
+            error:
+              error instanceof Error ? error.message : "Internal server error",
+          },
+          { status: 500 }
+        );
       }
     }
 
     // Handle generate response endpoint
-    if (url.pathname.endsWith("/generate-response") && request.method === "POST") {
+    if (
+      url.pathname.endsWith("/generate-response") &&
+      request.method === "POST"
+    ) {
       try {
-        const data = await request.json() as { memo_id: string; persona_id?: string; emoji?: string };
+        const data = (await request.json()) as {
+          memo_id: string;
+          persona_id?: string;
+          emoji?: string;
+        };
         const { memo_id, persona_id, emoji } = data;
 
         console.log("Generate response request for memo:", memo_id);
@@ -1089,11 +1189,15 @@ export class Chat extends AIChatAgent<Env, State> {
         // Build thread context
         const threadContext = thread.memos
           .filter((memo: any) => memo.content !== "Thinking...")
-          .map((memo: any) => `${memo.author === 'assistant' ? 'Assistant' : 'User'}: ${memo.content}`)
-          .join('\n\n');
+          .map(
+            (memo: any) =>
+              `${memo.author === "assistant" ? "Assistant" : "User"}: ${memo.content}`
+          )
+          .join("\n\n");
 
         // Build semantic context using existing methods
-        const fragmentContext = await this.buildContextFromFragments(threadContext);
+        const fragmentContext =
+          await this.buildContextFromFragments(threadContext);
         const memoContext = await this.buildContextFromMemos(threadContext);
 
         let contextBlocks = "";
@@ -1141,7 +1245,9 @@ export class Chat extends AIChatAgent<Env, State> {
           // Set model based on persona preference
           if (persona?.model_preference) {
             personaModel = setCurrentModel(persona.model_preference);
-            console.log(`Using persona "${persona.name}" with model: ${persona.model_preference}`);
+            console.log(
+              `Using persona "${persona.name}" with model: ${persona.model_preference}`
+            );
           }
         }
 
@@ -1169,7 +1275,9 @@ Please provide a helpful response to continue this conversation thread.`;
 
         console.log("Starting AI text generation...");
         if (persona) {
-          console.log(`Generating response with persona: ${persona.name} (${persona.emoji})`);
+          console.log(
+            `Generating response with persona: ${persona.name} (${persona.emoji})`
+          );
         }
 
         // Simple text generation - no tools
@@ -1181,11 +1289,12 @@ Please provide a helpful response to continue this conversation thread.`;
         console.log("AI generation completed, updating memo...");
 
         // Update the placeholder memo with persona info
-        const response = result.text || "Sorry, I couldn't generate a response.";
+        const response =
+          result.text || "Sorry, I couldn't generate a response.";
         const now = new Date().toISOString();
-        
+
         // Add persona metadata to author field if persona is used
-        let authorField = 'assistant';
+        let authorField = "assistant";
         if (persona) {
           authorField = `assistant:${persona.emoji}:${persona.name}`;
         }
@@ -1197,7 +1306,11 @@ Please provide a helpful response to continue this conversation thread.`;
         `;
 
         console.log("Generated response updated in memo:", memo_id);
-        return Response.json({ success: true, message: "Response generated successfully", content: response });
+        return Response.json({
+          success: true,
+          message: "Response generated successfully",
+          content: response,
+        });
       } catch (error) {
         console.error("Error generating response:", error);
 
@@ -1213,79 +1326,109 @@ Please provide a helpful response to continue this conversation thread.`;
           console.error("Error updating memo with error message:", updateError);
         }
 
-        return Response.json({ success: false, error: error instanceof Error ? error.message : "Internal server error" }, { status: 500 });
+        return Response.json(
+          {
+            success: false,
+            error:
+              error instanceof Error ? error.message : "Internal server error",
+          },
+          { status: 500 }
+        );
       }
     }
 
     if (url.pathname.endsWith("/set-model") && request.method === "POST") {
       try {
-        const { modelName } = await request.json() as { modelName: string };
+        const { modelName } = (await request.json()) as { modelName: string };
 
         // Validate model name
-        if (modelName !== OPENAI_MODEL_NAME && modelName !== ANTHROPIC_MODEL_NAME) {
-          return new Response(JSON.stringify({
-            success: false,
-            error: `Invalid model name. Supported models: ${OPENAI_MODEL_NAME}, ${ANTHROPIC_MODEL_NAME}`
-          }), {
-            status: 400,
-            headers: { "Content-Type": "application/json" }
-          });
+        if (
+          modelName !== OPENAI_MODEL_NAME &&
+          modelName !== ANTHROPIC_MODEL_NAME
+        ) {
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: `Invalid model name. Supported models: ${OPENAI_MODEL_NAME}, ${ANTHROPIC_MODEL_NAME}`,
+            }),
+            {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            }
+          );
         }
 
         // Check if the appropriate API key is configured
         if (modelName === ANTHROPIC_MODEL_NAME && !this.env.ANTHROPIC_API_KEY) {
-          return new Response(JSON.stringify({
-            success: false,
-            error: "Anthropic API key is not configured. Please set the ANTHROPIC_API_KEY environment variable."
-          }), {
-            status: 400,
-            headers: { "Content-Type": "application/json" }
-          });
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error:
+                "Anthropic API key is not configured. Please set the ANTHROPIC_API_KEY environment variable.",
+            }),
+            {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            }
+          );
         }
 
         if (modelName === OPENAI_MODEL_NAME && !this.env.OPENAI_API_KEY) {
-          return new Response(JSON.stringify({
-            success: false,
-            error: "OpenAI API key is not configured. Please set the OPENAI_API_KEY environment variable."
-          }), {
-            status: 400,
-            headers: { "Content-Type": "application/json" }
-          });
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error:
+                "OpenAI API key is not configured. Please set the OPENAI_API_KEY environment variable.",
+            }),
+            {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            }
+          );
         }
 
         // Update the state with the new model name
         this.setState({
           ...this.state,
-          currentModelName: modelName
+          currentModelName: modelName,
         });
 
-        return new Response(JSON.stringify({
-          success: true,
-          currentModel: modelName
-        }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" }
-        });
+        return new Response(
+          JSON.stringify({
+            success: true,
+            currentModel: modelName,
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
       } catch (err) {
         console.error("Error setting model:", err);
-        return new Response(JSON.stringify({
-          success: false,
-          error: "Failed to set model"
-        }), {
-          status: 500,
-          headers: { "Content-Type": "application/json" }
-        });
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "Failed to set model",
+          }),
+          {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
       }
     }
 
     // Check if this is a get-model request
     if (url.pathname.endsWith("/get-model") && request.method === "GET") {
-      return new Response(JSON.stringify({
-        currentModel: this.state.currentModelName
-      }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" }
-      });
+      return new Response(
+        JSON.stringify({
+          currentModel: this.state.currentModelName,
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
     }
 
     // First check if this is a fragments API request
@@ -1304,7 +1447,7 @@ Please provide a helpful response to continue this conversation thread.`;
     if (this.mcp.isCallbackRequest(request)) {
       try {
         const { serverId } = await this.mcp.handleCallbackRequest(request);
-        console.log('DEBUG', serverId, this.state);
+        console.log("DEBUG", serverId, this.state);
         this.setServerState(serverId, {
           url: this.state.servers[serverId].url,
           state: this.mcp.mcpConnections[serverId].connectionState,
@@ -1332,7 +1475,11 @@ Please provide a helpful response to continue this conversation thread.`;
     // Handle add reaction endpoint
     if (url.pathname.endsWith("/add-reaction") && request.method === "POST") {
       try {
-        const data = await request.json() as { memo_id: string; emoji: string; user_id: string };
+        const data = (await request.json()) as {
+          memo_id: string;
+          emoji: string;
+          user_id: string;
+        };
         const { memo_id, emoji, user_id } = data;
 
         if (!memo_id || !emoji || !user_id) {
@@ -1358,17 +1505,34 @@ Please provide a helpful response to continue this conversation thread.`;
           VALUES (${memo_id}, ${emoji}, ${user_id})
         `;
 
-        return Response.json({ success: true, message: "Reaction added successfully" });
+        return Response.json({
+          success: true,
+          message: "Reaction added successfully",
+        });
       } catch (error) {
         console.error("Error adding reaction:", error);
-        return Response.json({ success: false, error: error instanceof Error ? error.message : "Internal server error" }, { status: 500 });
+        return Response.json(
+          {
+            success: false,
+            error:
+              error instanceof Error ? error.message : "Internal server error",
+          },
+          { status: 500 }
+        );
       }
     }
 
     // Handle remove reaction endpoint
-    if (url.pathname.endsWith("/remove-reaction") && request.method === "POST") {
+    if (
+      url.pathname.endsWith("/remove-reaction") &&
+      request.method === "POST"
+    ) {
       try {
-        const data = await request.json() as { memo_id: string; emoji: string; user_id: string };
+        const data = (await request.json()) as {
+          memo_id: string;
+          emoji: string;
+          user_id: string;
+        };
         const { memo_id, emoji, user_id } = data;
 
         if (!memo_id || !emoji || !user_id) {
@@ -1381,21 +1545,34 @@ Please provide a helpful response to continue this conversation thread.`;
           WHERE memo_id = ${memo_id} AND emoji = ${emoji} AND user_id = ${user_id}
         `;
 
-        return Response.json({ success: true, message: "Reaction removed successfully" });
+        return Response.json({
+          success: true,
+          message: "Reaction removed successfully",
+        });
       } catch (error) {
         console.error("Error removing reaction:", error);
-        return Response.json({ success: false, error: error instanceof Error ? error.message : "Internal server error" }, { status: 500 });
+        return Response.json(
+          {
+            success: false,
+            error:
+              error instanceof Error ? error.message : "Internal server error",
+          },
+          { status: 500 }
+        );
       }
     }
 
     // Handle extract fragments endpoint
-    if (url.pathname.endsWith("/extract-fragments") && request.method === "POST") {
+    if (
+      url.pathname.endsWith("/extract-fragments") &&
+      request.method === "POST"
+    ) {
       try {
-        const data = await request.json() as {
+        const data = (await request.json()) as {
           memo_id: string;
           memo_content: string;
           thread_context: string;
-          parent_memo_id: string
+          parent_memo_id: string;
         };
         const { memo_id, memo_content, thread_context, parent_memo_id } = data;
 
@@ -1409,18 +1586,23 @@ Please provide a helpful response to continue this conversation thread.`;
         let vectorResults = { matches: [] };
         try {
           const embedding = await this.env.AI.run("@cf/baai/bge-base-en-v1.5", {
-            text: memo_content
+            text: memo_content,
           });
 
           vectorResults = await this.env.VECTORIZE.query(embedding.data[0], {
             topK: 5,
-            returnMetadata: true
+            returnMetadata: true,
           });
         } catch (error) {
-          if (!(error instanceof Error && error.message.includes('Authentication error'))) {
-            console.error('Error in vector similarity search:', error);
+          if (
+            !(
+              error instanceof Error &&
+              error.message.includes("Authentication error")
+            )
+          ) {
+            console.error("Error in vector similarity search:", error);
           } else {
-            console.log('Vector search unavailable in development mode');
+            console.log("Vector search unavailable in development mode");
           }
           // Continue with empty results
         }
@@ -1429,14 +1611,15 @@ Please provide a helpful response to continue this conversation thread.`;
           .filter((match: any) => match.score > 0.7)
           .map((match: any) => ({
             id: match.id,
-            content: match.metadata?.content || '',
-            score: match.score
+            content: match.metadata?.content || "",
+            score: match.score,
           }));
 
         // Build context for LLM
-        const similarFragmentsContext = similarFragments.length > 0
-          ? `\n\nSimilar existing fragments:\n${similarFragments.map(f => `- ${f.content} (similarity: ${f.score.toFixed(2)})`).join('\n')}`
-          : '';
+        const similarFragmentsContext =
+          similarFragments.length > 0
+            ? `\n\nSimilar existing fragments:\n${similarFragments.map((f) => `- ${f.content} (similarity: ${f.score.toFixed(2)})`).join("\n")}`
+            : "";
 
         const extractionPrompt = `You are analyzing a conversation thread to extract key concepts and insights as fragments for a knowledge base.
 
@@ -1501,11 +1684,14 @@ Use internal_links to connect related fragments extracted from the same message.
           }
         } catch (parseError) {
           console.error("Failed to parse LLM response as JSON:", parseError);
-          return Response.json({
-            success: false,
-            error: "Failed to parse extraction plan",
-            raw_response: result.text
-          }, { status: 500 });
+          return Response.json(
+            {
+              success: false,
+              error: "Failed to parse extraction plan",
+              raw_response: result.text,
+            },
+            { status: 500 }
+          );
         }
 
         console.log("Parsed extraction plan:", extractionPlan);
@@ -1518,23 +1704,26 @@ Use internal_links to connect related fragments extracted from the same message.
           for (const fragment of extractionPlan.fragments) {
             try {
               // Create fragment using the fragments API
-              const fragmentResponse = await fetch(`${new URL(request.url).origin}/agents/chat/default/create-fragment`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  title: fragment.title,
-                  content: fragment.content,
-                  source_memo_id: memo_id
-                })
-              });
+              const fragmentResponse = await fetch(
+                `${new URL(request.url).origin}/agents/chat/default/create-fragment`,
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    title: fragment.title,
+                    content: fragment.content,
+                    source_memo_id: memo_id,
+                  }),
+                }
+              );
 
               if (fragmentResponse.ok) {
                 const fragmentResult = await fragmentResponse.json();
                 createdFragments.push({
                   ...fragment,
-                  id: fragmentResult.id
+                  id: fragmentResult.id,
                 });
                 console.log("Created fragment:", fragment.title);
               }
@@ -1545,33 +1734,47 @@ Use internal_links to connect related fragments extracted from the same message.
         }
 
         // Create internal links between newly created fragments
-        if (extractionPlan.internal_links && extractionPlan.internal_links.length > 0 && createdFragments.length > 1) {
+        if (
+          extractionPlan.internal_links &&
+          extractionPlan.internal_links.length > 0 &&
+          createdFragments.length > 1
+        ) {
           for (const internalLink of extractionPlan.internal_links) {
             try {
-              const fromFragment = createdFragments[internalLink.from_fragment_index];
-              const toFragment = createdFragments[internalLink.to_fragment_index];
+              const fromFragment =
+                createdFragments[internalLink.from_fragment_index];
+              const toFragment =
+                createdFragments[internalLink.to_fragment_index];
 
               if (fromFragment && toFragment) {
                 // Create bidirectional links between fragments
-                const linkResponse = await fetch(`${new URL(request.url).origin}/agents/chat/default/link-fragments`, {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                  },
-                  body: JSON.stringify({
-                    from_memo_id: fromFragment.id,
-                    to_fragment_id: toFragment.id,
-                    relationship: internalLink.relationship
-                  })
-                });
+                const linkResponse = await fetch(
+                  `${new URL(request.url).origin}/agents/chat/default/link-fragments`,
+                  {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                      from_memo_id: fromFragment.id,
+                      to_fragment_id: toFragment.id,
+                      relationship: internalLink.relationship,
+                    }),
+                  }
+                );
 
                 if (linkResponse.ok) {
                   createdLinks.push({
                     from: fromFragment.id,
                     to: toFragment.id,
-                    relationship: internalLink.relationship
+                    relationship: internalLink.relationship,
                   });
-                  console.log("Created internal link:", fromFragment.id, "->", toFragment.id);
+                  console.log(
+                    "Created internal link:",
+                    fromFragment.id,
+                    "->",
+                    toFragment.id
+                  );
                 }
               }
             } catch (error) {
@@ -1585,21 +1788,27 @@ Use internal_links to connect related fragments extracted from the same message.
           for (const link of extractionPlan.links) {
             try {
               // Create link using the fragments API
-              const linkResponse = await fetch(`${new URL(request.url).origin}/agents/chat/default/link-fragments`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  from_memo_id: memo_id,
-                  to_fragment_id: link.existing_fragment_id,
-                  relationship: link.relationship
-                })
-              });
+              const linkResponse = await fetch(
+                `${new URL(request.url).origin}/agents/chat/default/link-fragments`,
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    from_memo_id: memo_id,
+                    to_fragment_id: link.existing_fragment_id,
+                    relationship: link.relationship,
+                  }),
+                }
+              );
 
               if (linkResponse.ok) {
                 createdLinks.push(link);
-                console.log("Created link to fragment:", link.existing_fragment_id);
+                console.log(
+                  "Created link to fragment:",
+                  link.existing_fragment_id
+                );
               }
             } catch (error) {
               console.error("Error creating fragment link:", error);
@@ -1612,23 +1821,31 @@ Use internal_links to connect related fragments extracted from the same message.
           message: "Fragment extraction completed",
           created_fragments: createdFragments.length,
           created_links: createdLinks.length,
-          created_internal_links: extractionPlan.internal_links ? extractionPlan.internal_links.length : 0,
-          extraction_plan: extractionPlan
+          created_internal_links: extractionPlan.internal_links
+            ? extractionPlan.internal_links.length
+            : 0,
+          extraction_plan: extractionPlan,
         });
-
       } catch (error) {
         console.error("Error in fragment extraction:", error);
-        return Response.json({
-          success: false,
-          error: error instanceof Error ? error.message : "Internal server error"
-        }, { status: 500 });
+        return Response.json(
+          {
+            success: false,
+            error:
+              error instanceof Error ? error.message : "Internal server error",
+          },
+          { status: 500 }
+        );
       }
     }
 
     // Handle generate thread summary endpoint
-    if (url.pathname.endsWith("/generate-thread-summary") && request.method === "POST") {
+    if (
+      url.pathname.endsWith("/generate-thread-summary") &&
+      request.method === "POST"
+    ) {
       try {
-        const data = await request.json() as {
+        const data = (await request.json()) as {
           thread_slug: string;
           conversation_context: string;
           total_replies: number;
@@ -1640,7 +1857,10 @@ Use internal_links to connect related fragments extracted from the same message.
         }
 
         console.log("Starting thread summary generation for:", thread_slug);
-        console.log("Conversation context length:", conversation_context.length);
+        console.log(
+          "Conversation context length:",
+          conversation_context.length
+        );
         console.log("Total replies:", total_replies);
 
         const summaryPrompt = `You are analyzing a conversation thread to create a concise, informative summary for display on a thread listing.
@@ -1685,7 +1905,7 @@ Return only the summary text, no additional formatting or explanation.`;
         `;
 
         console.log("Update result:", updateResult);
-        console.log("Rows affected:", updateResult.changes || 'unknown');
+        console.log("Rows affected:", updateResult.changes || "unknown");
         console.log("Thread summary updated for:", thread_slug);
 
         // Verify the update worked
@@ -1697,22 +1917,28 @@ Return only the summary text, no additional formatting or explanation.`;
         return Response.json({
           success: true,
           message: "Thread summary generated successfully",
-          summary: summary
+          summary: summary,
         });
-
       } catch (error) {
         console.error("Error in thread summary generation:", error);
-        return Response.json({
-          success: false,
-          error: error instanceof Error ? error.message : "Internal server error"
-        }, { status: 500 });
+        return Response.json(
+          {
+            success: false,
+            error:
+              error instanceof Error ? error.message : "Internal server error",
+          },
+          { status: 500 }
+        );
       }
     }
 
     // Handle find related content endpoint
-    if (url.pathname.endsWith("/find-related-content") && request.method === "POST") {
+    if (
+      url.pathname.endsWith("/find-related-content") &&
+      request.method === "POST"
+    ) {
       try {
-        const data = await request.json() as {
+        const data = (await request.json()) as {
           memo_id: string;
           content: string;
         };
@@ -1730,25 +1956,34 @@ Return only the summary text, no additional formatting or explanation.`;
         try {
           // Generate embeddings for the content
           const embedding = await this.env.AI.run("@cf/baai/bge-base-en-v1.5", {
-            text: content
+            text: content,
           });
 
           // Search for similar memos
-          const memoVectorResults = await this.env.VECTORIZE.query(embedding.data[0], {
-            topK: 10,
-            returnMetadata: true
-          });
+          const memoVectorResults = await this.env.VECTORIZE.query(
+            embedding.data[0],
+            {
+              topK: 10,
+              returnMetadata: true,
+            }
+          );
 
           const similarMemoIds = memoVectorResults.matches
-            .filter((match: any) => match.score > 0.7 && match.metadata?.memo_id !== memo_id)
+            .filter(
+              (match: any) =>
+                match.score > 0.7 && match.metadata?.memo_id !== memo_id
+            )
             .map((match: any) => ({
               memo_id: match.metadata?.memo_id,
-              similarity: match.score
+              similarity: match.score,
             }));
 
           // Fetch memo details for similar memos
           if (similarMemoIds.length > 0) {
-            for (const { memo_id: similarMemoId, similarity } of similarMemoIds) {
+            for (const {
+              memo_id: similarMemoId,
+              similarity,
+            } of similarMemoIds) {
               const memoResults = await this.sql`
                 SELECT id, slug, content, author, created, modified, parent_id, summary
                 FROM memos
@@ -1758,51 +1993,71 @@ Return only the summary text, no additional formatting or explanation.`;
               if (memoResults.length > 0) {
                 relatedMemos.push({
                   ...memoResults[0],
-                  similarity
+                  similarity,
                 });
               }
             }
           }
 
           // Search for similar fragments
-          const fragmentVectorResults = await this.env.VECTORIZE.query(embedding.data[0], {
-            topK: 5,
-            returnMetadata: true
-          });
+          const fragmentVectorResults = await this.env.VECTORIZE.query(
+            embedding.data[0],
+            {
+              topK: 5,
+              returnMetadata: true,
+            }
+          );
 
           const similarFragmentIds = fragmentVectorResults.matches
-            .filter((match: any) => match.score > 0.7 && match.metadata?.type === 'fragment')
+            .filter(
+              (match: any) =>
+                match.score > 0.7 && match.metadata?.type === "fragment"
+            )
             .map((match: any) => ({
               fragment_id: match.id,
               similarity: match.score,
-              content: match.metadata?.content || ''
+              content: match.metadata?.content || "",
             }));
 
           relatedFragments = similarFragmentIds.slice(0, 5);
-
         } catch (vectorError) {
-          if (!(vectorError instanceof Error && vectorError.message.includes('Authentication error'))) {
-            console.error('Error in vector similarity search for related content:', vectorError);
+          if (
+            !(
+              vectorError instanceof Error &&
+              vectorError.message.includes("Authentication error")
+            )
+          ) {
+            console.error(
+              "Error in vector similarity search for related content:",
+              vectorError
+            );
           } else {
-            console.log('Vector search unavailable in development mode for related content');
+            console.log(
+              "Vector search unavailable in development mode for related content"
+            );
           }
           // Continue with empty results if vector search fails
         }
 
-        console.log(`Found ${relatedMemos.length} related memos and ${relatedFragments.length} related fragments`);
+        console.log(
+          `Found ${relatedMemos.length} related memos and ${relatedFragments.length} related fragments`
+        );
 
         return Response.json({
           success: true,
           memos: relatedMemos,
-          fragments: relatedFragments
+          fragments: relatedFragments,
         });
-
       } catch (error) {
         console.error("Error finding related content:", error);
-        return Response.json({
-          success: false,
-          error: error instanceof Error ? error.message : "Internal server error"
-        }, { status: 500 });
+        return Response.json(
+          {
+            success: false,
+            error:
+              error instanceof Error ? error.message : "Internal server error",
+          },
+          { status: 500 }
+        );
       }
     }
 
@@ -1830,20 +2085,28 @@ Return only the summary text, no additional formatting or explanation.`;
         return Response.json({ success: true, personas });
       } catch (error) {
         console.error("Error fetching emoji personas:", error);
-        return Response.json({ success: false, error: error instanceof Error ? error.message : "Internal server error" }, { status: 500 });
+        return Response.json(
+          {
+            success: false,
+            error:
+              error instanceof Error ? error.message : "Internal server error",
+          },
+          { status: 500 }
+        );
       }
     }
 
     if (url.pathname.endsWith("/emoji-personas") && request.method === "POST") {
       try {
-        const data = await request.json() as {
+        const data = (await request.json()) as {
           emoji: string;
           name: string;
           description: string;
           instructions: string;
           model_preference?: string;
         };
-        const { emoji, name, description, instructions, model_preference } = data;
+        const { emoji, name, description, instructions, model_preference } =
+          data;
 
         if (!emoji || !name || !description || !instructions) {
           return new Response("Missing required fields", { status: 400 });
@@ -1869,16 +2132,26 @@ Return only the summary text, no additional formatting or explanation.`;
           VALUES (${emoji}, ${name}, ${description}, ${instructions}, ${model_preference || null}, ${now}, ${now})
         `;
 
-        return Response.json({ success: true, message: "Emoji persona created successfully" });
+        return Response.json({
+          success: true,
+          message: "Emoji persona created successfully",
+        });
       } catch (error) {
         console.error("Error creating emoji persona:", error);
-        return Response.json({ success: false, error: error instanceof Error ? error.message : "Internal server error" }, { status: 500 });
+        return Response.json(
+          {
+            success: false,
+            error:
+              error instanceof Error ? error.message : "Internal server error",
+          },
+          { status: 500 }
+        );
       }
     }
 
     if (url.pathname.endsWith("/emoji-personas") && request.method === "PUT") {
       try {
-        const data = await request.json() as {
+        const data = (await request.json()) as {
           id: string;
           emoji: string;
           name: string;
@@ -1886,7 +2159,8 @@ Return only the summary text, no additional formatting or explanation.`;
           instructions: string;
           model_preference?: string;
         };
-        const { id, emoji, name, description, instructions, model_preference } = data;
+        const { id, emoji, name, description, instructions, model_preference } =
+          data;
 
         if (!id || !emoji || !name || !description || !instructions) {
           return new Response("Missing required fields", { status: 400 });
@@ -1900,16 +2174,29 @@ Return only the summary text, no additional formatting or explanation.`;
           WHERE id = ${id}
         `;
 
-        return Response.json({ success: true, message: "Emoji persona updated successfully" });
+        return Response.json({
+          success: true,
+          message: "Emoji persona updated successfully",
+        });
       } catch (error) {
         console.error("Error updating emoji persona:", error);
-        return Response.json({ success: false, error: error instanceof Error ? error.message : "Internal server error" }, { status: 500 });
+        return Response.json(
+          {
+            success: false,
+            error:
+              error instanceof Error ? error.message : "Internal server error",
+          },
+          { status: 500 }
+        );
       }
     }
 
-    if (url.pathname.endsWith("/emoji-personas") && request.method === "DELETE") {
+    if (
+      url.pathname.endsWith("/emoji-personas") &&
+      request.method === "DELETE"
+    ) {
       try {
-        const data = await request.json() as { id: string };
+        const data = (await request.json()) as { id: string };
         const { id } = data;
 
         if (!id) {
@@ -1920,10 +2207,20 @@ Return only the summary text, no additional formatting or explanation.`;
           DELETE FROM emoji_personas WHERE id = ${id}
         `;
 
-        return Response.json({ success: true, message: "Emoji persona deleted successfully" });
+        return Response.json({
+          success: true,
+          message: "Emoji persona deleted successfully",
+        });
       } catch (error) {
         console.error("Error deleting emoji persona:", error);
-        return Response.json({ success: false, error: error instanceof Error ? error.message : "Internal server error" }, { status: 500 });
+        return Response.json(
+          {
+            success: false,
+            error:
+              error instanceof Error ? error.message : "Internal server error",
+          },
+          { status: 500 }
+        );
       }
     }
 

@@ -10,16 +10,16 @@
     "directory": "public",
   },
   "vars": {
-    "HOST": "https://samantabhadra.bfollington.workers.dev/"
+    "HOST": "https://samantabhadra.bfollington.workers.dev/",
   },
   "vectorize": [
     {
       "binding": "VECTORIZE",
-      "index_name": "embeddings-index"
-    }
+      "index_name": "embeddings-index",
+    },
   ],
   "ai": {
-    "binding": "AI"
+    "binding": "AI",
   },
   "durable_objects": {
     "bindings": [
@@ -31,14 +31,12 @@
   },
   "observability": {
     "enabled": true,
-    "head_sampling_rate": 1
+    "head_sampling_rate": 1,
   },
   "migrations": [
     {
       "tag": "v1",
-      "new_sqlite_classes": [
-        "Chat"
-      ],
+      "new_sqlite_classes": ["Chat"],
     },
   ],
 }

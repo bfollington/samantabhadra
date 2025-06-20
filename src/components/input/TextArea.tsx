@@ -36,7 +36,9 @@ export const TextArea = ({
     setCurrentValue(initialValue ?? "");
   }, [initialValue]);
 
-  const updateCurrentValue = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+  const updateCurrentValue = (
+    event: React.ChangeEvent<HTMLTextAreaElement>
+  ) => {
     const newValue = event.target.value;
     setCurrentValue(newValue);
 
@@ -98,7 +100,7 @@ export const TextArea = ({
         {
           "text-ob-destructive transition-colors": !isValid,
           "resize-y": true,
-          'min-h-[5em]': true
+          "min-h-[5em]": true,
         },
         className
       )}

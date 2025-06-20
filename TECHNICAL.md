@@ -7,6 +7,7 @@ Samantabhadra is built on Cloudflare Workers using Durable Objects for persisten
 ### Core Components
 
 1. **Durable Object (Chat class)** - The main stateful component that handles:
+
    - Chat session management
    - SQLite database operations
    - Vector embedding creation and search
@@ -14,6 +15,7 @@ Samantabhadra is built on Cloudflare Workers using Durable Objects for persisten
    - Tool execution context
 
 2. **Vector Database (Cloudflare Vectorize)** - Handles:
+
    - Semantic similarity search
    - Embedding storage with metadata
    - Fast nearest-neighbor queries
@@ -25,6 +27,7 @@ Samantabhadra is built on Cloudflare Workers using Durable Objects for persisten
 ## Database Schema
 
 ### Fragments Table
+
 ```sql
 CREATE TABLE fragments (
   id        TEXT PRIMARY KEY,
@@ -41,6 +44,7 @@ CREATE TABLE fragments (
 ```
 
 ### Fragment Edges Table
+
 ```sql
 CREATE TABLE fragment_edges (
   id       TEXT PRIMARY KEY,
@@ -54,6 +58,7 @@ CREATE TABLE fragment_edges (
 ```
 
 ### Memos Table
+
 ```sql
 CREATE TABLE memos (
   id       TEXT PRIMARY KEY,
@@ -71,6 +76,7 @@ CREATE TABLE memos (
 ### Vector Embedding Pipeline
 
 1. **Creation Flow**:
+
    - Content is sent to Cloudflare AI BGE model
    - Returns 768-dimensional embedding vector
    - Stored in Vectorize with metadata linking to source
@@ -83,6 +89,7 @@ CREATE TABLE memos (
 ### Backlink System
 
 The backlink system uses a two-phase approach:
+
 1. **Extraction**: Regex pattern `\[\[([\w-]+)\]\]` finds references
 2. **Resolution**: Links are tracked bidirectionally in the database
 
@@ -91,6 +98,7 @@ The backlink system uses a two-phase approach:
 Tools follow two patterns:
 
 1. **Auto-executing**: Include `execute` function
+
 ```typescript
 tool({
   description: "...",
@@ -100,9 +108,10 @@ tool({
 ```
 
 2. **Confirmation Required**: No `execute` function
+
 ```typescript
 tool({
-  description: "...", 
+  description: "...",
   parameters: z.object({...})
   // Implementation in executions object
 })
@@ -111,6 +120,7 @@ tool({
 ### API Routing
 
 The Durable Object's `onRequest` method handles all HTTP requests:
+
 - Fragment API endpoints (`/list-fragments`, `/fragment-graph`, etc.)
 - Memo API endpoints (`/list-memos`, `/search-memos-vector`, etc.)
 - Chat WebSocket upgrade for streaming
@@ -119,6 +129,7 @@ The Durable Object's `onRequest` method handles all HTTP requests:
 ### State Management
 
 The Chat class maintains state including:
+
 - `messages`: Full conversation history
 - `state.servers`: MCP server connections
 - `state.currentModelName`: Active AI model

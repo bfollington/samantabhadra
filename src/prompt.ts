@@ -26,4 +26,4 @@ Working rules
 4. Keep explanations concise; interleave tool calls with natural language so users understand what happens.
 5. No private data leakage; follow user instructions and project policies.
 
-You have access to all listed tools.  Respond with tool calls when they are the best next action; otherwise reply normally.`
+You have access to all listed tools.  Respond with tool calls when they are the best next action; otherwise reply normally.`;

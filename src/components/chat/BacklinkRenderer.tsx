@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect } from "react";
 
 interface BacklinkRendererProps {
   text: string;
@@ -10,7 +10,10 @@ interface BacklinkRendererProps {
  * Supports both memos and fragments - it attempts to open a memo first,
  * and if that fails, tries to open a fragment with the same slug.
  */
-export function BacklinkRenderer({ text, onNavigateToMemo }: BacklinkRendererProps) {
+export function BacklinkRenderer({
+  text,
+  onNavigateToMemo,
+}: BacklinkRendererProps) {
   const [elements, setElements] = useState<React.ReactNode[]>([]);
 
   useEffect(() => {
@@ -35,33 +38,33 @@ export function BacklinkRenderer({ text, onNavigateToMemo }: BacklinkRendererPro
       if (match.index > lastIndex) {
         parts.push(textStr.substring(lastIndex, match.index));
       }
-      
+
       const slug = match[1];
       parts.push(
-        <button 
+        <button
           key={`${slug}-${match.index}`}
           className="text-[#F48120] hover:underline font-medium"
           onClick={() => {
             // When a backlink is clicked, we'll try to open both a memo and a fragment
             // The UI will show the first one that exists
             onNavigateToMemo(slug);
-            
+
             // Also store the slug as a potential fragment to open
-            sessionStorage.setItem('openFragmentSlug', slug);
+            sessionStorage.setItem("openFragmentSlug", slug);
           }}
         >
           {slug}
         </button>
       );
-      
+
       lastIndex = match.index + match[0].length;
     }
-    
+
     // Add any remaining text
     if (lastIndex < textStr.length) {
       parts.push(textStr.substring(lastIndex));
     }
-    
+
     // If no matches were found, just return the original text
     if (!matchFound) {
       setElements([textStr]);

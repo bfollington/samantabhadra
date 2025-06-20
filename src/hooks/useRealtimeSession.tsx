@@ -31,15 +31,14 @@ export function useRealtimeSession() {
     // Set up data channel for sending and receiving events
     const dc = pc.createDataChannel("oai-events");
 
-    dc.onmessage = e => console.log('raw dc message', e)
+    dc.onmessage = (e) => console.log("raw dc message", e);
     setDataChannel(dc);
 
     // Start the session using the Session Description Protocol (SDP)
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
 
-    const model =
-      'gpt-4o-realtime-preview-2024-12-17'
+    const model = "gpt-4o-realtime-preview-2024-12-17";
     const baseUrl = "https://api.openai.com/v1/realtime";
     const sdpResponse = await fetch(`${baseUrl}`, {
       method: "POST",
@@ -98,7 +97,7 @@ export function useRealtimeSession() {
     } else {
       console.error(
         "Failed to send message - no data channel available",
-        message,
+        message
       );
     }
   }
@@ -133,11 +132,15 @@ export function useRealtimeSession() {
           event.timestamp = new Date().toLocaleTimeString();
         }
 
-        console.log('event', event);
+        console.log("event", event);
 
         // Check for transcription completed events
-        if (event.type === "conversation.item.input_audio_transcription.completed" && event.transcript) {
-          setTranscription(t => [...t, event.transcript]);
+        if (
+          event.type ===
+            "conversation.item.input_audio_transcription.completed" &&
+          event.transcript
+        ) {
+          setTranscription((t) => [...t, event.transcript]);
         }
 
         setEvents((prev) => [event, ...prev]);
