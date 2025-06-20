@@ -854,6 +854,96 @@ async function createRealtimeSession(
     );
   }
 }
+
+/**
+ * Dump all memos and their data for debugging/recovery purposes
+ */
+export async function dumpAllMemos(
+  agent: Chat,
+  request: Request
+): Promise<Response> {
+  try {
+    // Fetch all memos with all columns
+    const memos = await agent.sql`
+      SELECT * FROM memos 
+      ORDER BY created DESC
+    `;
+
+    // Fetch all reactions
+    let reactions: any[] = [];
+    try {
+      reactions = await agent.sql`
+        SELECT * FROM reactions
+        ORDER BY created DESC
+      `;
+    } catch (error) {
+      console.error("Error fetching reactions:", error);
+    }
+
+    // Group reactions by memo_id
+    const reactionsByMemo: { [memoId: string]: any[] } = {};
+    reactions.forEach((reaction: any) => {
+      if (!reactionsByMemo[reaction.memo_id]) {
+        reactionsByMemo[reaction.memo_id] = [];
+      }
+      reactionsByMemo[reaction.memo_id].push(reaction);
+    });
+
+    // Enhance memos with their reactions
+    const memosWithReactions = memos.map((memo: any) => ({
+      ...memo,
+      reactions: reactionsByMemo[memo.id] || [],
+    }));
+
+    // Build thread relationships
+    const threadMap = new Map<string, any[]>();
+    memos.forEach((memo: any) => {
+      if (memo.parent_id) {
+        if (!threadMap.has(memo.parent_id)) {
+          threadMap.set(memo.parent_id, []);
+        }
+        threadMap.get(memo.parent_id)?.push(memo.id);
+      }
+    });
+
+    // Get table schema information
+    const tableInfo = await agent.sql`
+      SELECT sql FROM sqlite_master 
+      WHERE type = 'table' AND name = 'memos'
+    `;
+
+    // Count statistics
+    const stats = {
+      totalMemos: memos.length,
+      totalReactions: reactions.length,
+      memosWithParents: memos.filter((m: any) => m.parent_id).length,
+      rootMemos: memos.filter((m: any) => !m.parent_id).length,
+      memosWithVectors: memos.filter((m: any) => m.vector_id).length,
+      memosWithSummaries: memos.filter((m: any) => m.summary).length,
+      authors: [...new Set(memos.map((m: any) => m.author || "user"))],
+    };
+
+    const response = {
+      exportDate: new Date().toISOString(),
+      stats,
+      schema: tableInfo[0]?.sql || "Schema not found",
+      memos: memosWithReactions,
+      threadMap: Object.fromEntries(threadMap),
+    };
+
+    return Response.json(response, {
+      headers: {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+        "Content-Disposition": `attachment; filename="memos-dump-${new Date().toISOString().split("T")[0]}.json"`,
+      },
+    });
+  } catch (error: unknown) {
+    console.error("Error dumping memos:", error);
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
+    return Response.json(
+      { error: "Failed to dump memos", message: errorMessage },
       { status: 500 }
     );
   }
@@ -894,6 +984,8 @@ export async function handleMemosApi(
     return searchMemosByVector(agent, request);
   } else if (url.pathname.includes("realtime-token")) {
     return createRealtimeSession(agent, request);
+  } else if (url.pathname.includes("dump-all-memos")) {
+    return dumpAllMemos(agent, request);
   }
 
   // Not a memos API request
