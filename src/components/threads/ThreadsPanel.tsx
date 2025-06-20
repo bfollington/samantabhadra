@@ -198,7 +198,7 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
   const loadReplies = async (memo: Memo) => {
     try {
       const response = await fetch(
-        "/agents/chat/default/list-memos?sortBy=created&sortOrder=asc&limit=100"
+        "/agents/chat/default/list-memos?sortBy=created&sortOrder=asc&limit=255"
       );
       if (!response.ok) {
         throw new Error(`Failed to fetch replies: ${response.status}`);
@@ -461,7 +461,7 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
         currentMemo?.id === editingMemoId
           ? currentMemo
           : replies.find((r) => r.id === editingMemoId) ||
-            rootMemos.find((r) => r.id === editingMemoId);
+          rootMemos.find((r) => r.id === editingMemoId);
 
       if (!memoToEdit) {
         throw new Error("Memo not found");
@@ -590,7 +590,7 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
       currentMemo?.id === memoId
         ? currentMemo
         : replies.find((r) => r.id === memoId) ||
-          rootMemos.find((r) => r.id === memoId);
+        rootMemos.find((r) => r.id === memoId);
 
     if (!memo) return;
 
@@ -1012,11 +1012,10 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
     return (
       <div
         key={memo.id}
-        className={`group border-b border-neutral-200 dark:border-neutral-800 transition-colors ${
-          isMain
+        className={`group border-b border-neutral-200 dark:border-neutral-800 transition-colors ${isMain
             ? "p-6 bg-neutral-50 dark:bg-neutral-900/30 border-l-2 border-[#F48120]"
             : "p-4 cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-900/50"
-        }`}
+          }`}
         onClick={!isMain && !isEditing ? () => navigateToMemo(memo) : undefined}
       >
         <div className="flex gap-3">
@@ -1113,11 +1112,10 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
             ) : (
               <>
                 <p
-                  className={`leading-relaxed whitespace-pre-wrap ${
-                    isMain
+                  className={`leading-relaxed whitespace-pre-wrap ${isMain
                       ? "text-base text-neutral-900 dark:text-neutral-100"
                       : "text-sm text-neutral-800 dark:text-neutral-200"
-                  }`}
+                    }`}
                 >
                   {(() => {
                     if (isMain) {
@@ -1198,11 +1196,10 @@ export function ThreadsPanel({ onClose }: ThreadsPanelProps) {
                                 addReaction(memo.id, emoji);
                               }
                             }}
-                            className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs transition-colors ${
-                              hasUserReacted(memo, emoji)
+                            className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs transition-colors ${hasUserReacted(memo, emoji)
                                 ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
                                 : "bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-                            }`}
+                              }`}
                           >
                             <span>{emoji}</span>
                             <span>{users.length}</span>
